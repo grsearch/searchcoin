@@ -6,7 +6,8 @@
   "scripts": {
     "build:whitelist": "node src/whitelist-builder.js",
     "read:whitelist": "node src/whitelist-reader.js",
-    "run:signals": "node src/signal-engine.js"
+    "run:signals": "node src/signal-engine.js",
+    "run:cycle": "node src/whitelist-cycle.js"
   },
   "engines": {
     "node": ">=18"

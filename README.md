@@ -2,23 +2,21 @@
 
 本程序**不负责实际下单交易**。它负责：
 
-1. 发现适合交易的币（生成白名单）
-2. 监控 K 线
-3. 跑 RSI 信号策略
+1. 每 6 小时扫描并发现适合交易的币
+2. 生成并更新白名单（仅保留前 20）
+3. 监控 K 线并跑 RSI 信号策略
 4. 通过 webhook 发送买卖信号
+5. 币种退出白名单时，优先发送 SELL 退出信号
 
 ## 功能概览
 
 - 数据源：CoinGecko Pro Onchain（GeckoTerminal 数据）
 - 候选来源：`trending_pools`、`new_pools`、`megafilter`
 - 硬过滤：池龄、流动性、24h 成交额、24h 交易笔数、FDV 区间、黑名单
-- 波动指标：ATR%、realized volatility、平均振幅、wick 比例
-- 打分模型：
-  - `score = 0.35*ATR_rank + 0.30*RV_rank + 0.20*Range_rank + 0.15*VolLiq_rank`
-  - `penalty = 0.15*wick_rank + 0.10*(1-bodyBarsRatio)`
-  - `final_score = score - penalty`
+- 白名单规则：默认只保留前 `20`（`TOP_N` 默认值）
 - 白名单输出：`whitelist.json`
 - 信号输出：基于 RSI 的 BUY/SELL webhook 消息（仅信号，不交易）
+- 6 小时周期更新：退出白名单的币会优先发送 `SELL + EXIT_WHITELIST`
 
 ## CLI
 
@@ -40,14 +38,15 @@ npm run read:whitelist
 GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:signals
 ```
 
+- 每 6 小时完整周期（更新白名单 + 退出币优先发 SELL）：
+
+```bash
+GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cycle
+```
+
 ## 主要环境变量（白名单构建）
 
-- `GECKO_BASE_URL`（默认 `https://pro-api.coingecko.com/api/v3/onchain`）
-- `GECKO_API_KEY`（CoinGecko Pro key）
-- `GECKO_AUTH_MODE`（`header` 或 `query`）
-- `NETWORK`（默认 `solana`）
-- `TOP_N`（默认 `30`）
-- `OUTPUT_PATH`（默认 `whitelist.json`）
+- `TOP_N`（默认 `20`）
 - `MIN_POOL_AGE_HOURS`（默认 `48`）
 - `MAX_POOL_AGE_HOURS`（默认 `8760`，约 1 年）
 - `MIN_LIQUIDITY_USD`（默认 `100000`）
@@ -55,15 +54,9 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:sig
 - `MIN_TX_COUNT_24H`（默认 `10000`）
 - `MIN_FDV_USD`（默认 `1000000`）
 - `MAX_FDV_USD`（默认 `8000000`）
-- `MIN_ATR_PCT_5M14`（默认 `0.025`）
-- `MIN_AVG_RANGE_PCT_5M_24H`（默认 `0.012`）
-- `BLACKLIST_MINTS`（逗号分隔 token mint）
-- `JUPITER_URL`（默认 `https://api.jup.ag/swap/v1/quote`，仅用于可路由性检查）
-- `JUPITER_API_KEY`（可选，Jupiter Pro key）
-- `JUPITER_AUTH_MODE`（`header` 或 `query`，默认 `header`）
-- `QUOTE_MINT`（默认 Solana wSOL mint）
+- 其他：`GECKO_API_KEY`、`GECKO_AUTH_MODE`、`NETWORK`、`OUTPUT_PATH`、`BLACKLIST_MINTS`、`QUOTE_MINT`
 
-## 主要环境变量（信号引擎）
+## 主要环境变量（信号 / 周期）
 
 - `WHITELIST_PATH`（默认 `whitelist.json`）
 - `KLINE_TIMEFRAME`（默认 `minute`）
@@ -76,19 +69,15 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:sig
 - `WEBHOOK_AUTH_HEADER` / `WEBHOOK_AUTH_TOKEN`（可选 webhook 鉴权）
 - `DRY_RUN=true`（只输出信号，不发送 webhook）
 
-## 白名单直连（替代“接收白名单 webhook”）
-
-交易程序或信号程序应直接读取本地 `whitelist.json`（或通过 `npm run read:whitelist` 读取 stdout），不再依赖外部 webhook 推送白名单。
-
 ## OpenClaw 部署建议
 
-1. 每日生成白名单：
+1. 每 6 小时运行一次完整周期：
 
 ```bash
-0 1 * * * cd /path/to/searchcoin && GECKO_API_KEY=xxx /usr/bin/env npm run build:whitelist
+0 */6 * * * cd /path/to/searchcoin && GECKO_API_KEY=xxx WEBHOOK_URL=https://xxx /usr/bin/env npm run run:cycle
 ```
 
-2. 每 1~5 分钟跑一次信号扫描：
+2. 可选：更高频运行 RSI 监控（例如 5 分钟一次）
 
 ```bash
 */5 * * * * cd /path/to/searchcoin && GECKO_API_KEY=xxx WEBHOOK_URL=https://xxx /usr/bin/env npm run run:signals

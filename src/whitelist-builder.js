@@ -11,7 +11,7 @@ const CONFIG = {
   network: process.env.NETWORK ?? 'solana',
   quoteMint: process.env.QUOTE_MINT ?? 'So11111111111111111111111111111111111111112',
   outputPath: process.env.OUTPUT_PATH ?? 'whitelist.json',
-  topN: Number(process.env.TOP_N ?? 30),
+  topN: Number(process.env.TOP_N ?? 20),
   minPoolAgeHours: Number(process.env.MIN_POOL_AGE_HOURS ?? 48),
   maxPoolAgeHours: Number(process.env.MAX_POOL_AGE_HOURS ?? 8760),
   minLiquidityUsd: Number(process.env.MIN_LIQUIDITY_USD ?? 100_000),
