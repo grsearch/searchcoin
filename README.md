@@ -4,7 +4,7 @@
 
 1. 每 6 小时扫描并发现适合交易的币
 2. 生成并更新白名单（仅保留前 20）
-3. 监控 K 线并跑 RSI 信号策略
+3. 监控 K 线并跑 RSI 信号策略（5m 主周期）
 4. 通过 webhook 发送买卖信号
 5. 币种退出白名单时，优先发送 SELL 退出信号
 
@@ -16,6 +16,7 @@
 - 白名单规则：默认只保留前 `20`（`TOP_N` 默认值）
 - 白名单输出：`whitelist.json`
 - 信号输出：基于 RSI 的 BUY/SELL webhook 消息（仅信号，不交易）
+- 开单条件：15m K线下 EMA9 > EMA20 才允许 BUY
 - 6 小时周期更新：退出白名单的币会优先发送 `SELL + EXIT_WHITELIST`
 
 ## CLI
@@ -35,7 +36,7 @@ npm run read:whitelist
 - 扫描 K 线并发 webhook 信号：
 
 ```bash
-GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:signals
+GECKO_API_KEY=your_key SIGNAL_AGGREGATE=5 TREND_AGGREGATE=15 WEBHOOK_URL=https://your-webhook.endpoint npm run run:signals
 ```
 
 - 每 6 小时完整周期（更新白名单 + 退出币优先发 SELL）：
@@ -59,9 +60,14 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 ## 主要环境变量（信号 / 周期）
 
 - `WHITELIST_PATH`（默认 `whitelist.json`）
-- `KLINE_TIMEFRAME`（默认 `minute`）
-- `KLINE_AGGREGATE`（默认 `5`）
-- `KLINE_LIMIT`（默认 `120`）
+- `SIGNAL_TIMEFRAME`（默认 `minute`）
+- `SIGNAL_AGGREGATE`（默认 `5`，即 5m 主策略 K 线）
+- `SIGNAL_LIMIT`（默认 `120`）
+- `TREND_TIMEFRAME`（默认 `minute`）
+- `TREND_AGGREGATE`（默认 `15`，开单过滤 K 线）
+- `TREND_LIMIT`（默认 `120`）
+- `ENTRY_EMA_FAST`（默认 `9`）
+- `ENTRY_EMA_SLOW`（默认 `20`）
 - `RSI_PERIOD`（默认 `14`）
 - `RSI_OVERSOLD`（默认 `30`）
 - `RSI_OVERBOUGHT`（默认 `70`）

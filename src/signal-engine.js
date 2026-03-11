@@ -8,9 +8,16 @@ const CONFIG = {
   geckoAuthMode: process.env.GECKO_AUTH_MODE ?? 'header', // header | query
   network: process.env.NETWORK ?? 'solana',
   whitelistPath: process.env.WHITELIST_PATH ?? 'whitelist.json',
-  klineTimeframe: process.env.KLINE_TIMEFRAME ?? 'minute', // minute | hour | day
-  klineAggregate: Number(process.env.KLINE_AGGREGATE ?? 5),
-  klineLimit: Number(process.env.KLINE_LIMIT ?? 120),
+  // 主策略周期：5m K线
+  signalTimeframe: process.env.SIGNAL_TIMEFRAME ?? 'minute',
+  signalAggregate: Number(process.env.SIGNAL_AGGREGATE ?? 5),
+  signalLimit: Number(process.env.SIGNAL_LIMIT ?? 120),
+  // 开单过滤条件：15m EMA9 > EMA20
+  trendTimeframe: process.env.TREND_TIMEFRAME ?? 'minute',
+  trendAggregate: Number(process.env.TREND_AGGREGATE ?? 15),
+  trendLimit: Number(process.env.TREND_LIMIT ?? 120),
+  entryEmaFast: Number(process.env.ENTRY_EMA_FAST ?? 9),
+  entryEmaSlow: Number(process.env.ENTRY_EMA_SLOW ?? 20),
   rsiPeriod: Number(process.env.RSI_PERIOD ?? 14),
   rsiOversold: Number(process.env.RSI_OVERSOLD ?? 30),
   rsiOverbought: Number(process.env.RSI_OVERBOUGHT ?? 70),
@@ -50,8 +57,8 @@ async function loadWhitelist() {
   return Array.isArray(parsed?.whitelist) ? parsed.whitelist : [];
 }
 
-async function fetchPoolOhlcv(poolAddress) {
-  const url = `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/pools/${poolAddress}/ohlcv/${CONFIG.klineTimeframe}?aggregate=${CONFIG.klineAggregate}&limit=${CONFIG.klineLimit}`;
+async function fetchPoolOhlcv(poolAddress, timeframe, aggregate, limit) {
+  const url = `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/pools/${poolAddress}/ohlcv/${timeframe}?aggregate=${aggregate}&limit=${limit}`;
   const data = await fetchJson(url);
   const list = data?.data?.attributes?.ohlcv_list ?? [];
   return Array.isArray(list) ? list.reverse() : [];
@@ -87,15 +94,52 @@ function calcRsi(closes, period) {
   return rsis;
 }
 
-function buildSignal(token, previousRsi, currentRsi, closePrice) {
+function calcEmaSeries(values, period) {
+  if (values.length < period) return [];
+  const multiplier = 2 / (period + 1);
+  const series = [];
+
+  const sma = values.slice(0, period).reduce((sum, x) => sum + x, 0) / period;
+  series.push(sma);
+
+  for (let i = period; i < values.length; i += 1) {
+    const prev = series[series.length - 1];
+    const ema = (values[i] - prev) * multiplier + prev;
+    series.push(ema);
+  }
+
+  return series;
+}
+
+function getEntryTrend(closes) {
+  const fast = calcEmaSeries(closes, CONFIG.entryEmaFast);
+  const slow = calcEmaSeries(closes, CONFIG.entryEmaSlow);
+  if (!fast.length || !slow.length) return null;
+
+  const emaFast = fast[fast.length - 1];
+  const emaSlow = slow[slow.length - 1];
+  return {
+    emaFast,
+    emaSlow,
+    bullish: emaFast > emaSlow,
+  };
+}
+
+function buildSignal(token, previousRsi, currentRsi, closePrice, trend) {
+  // BUY 开单必须满足 15m EMA9 > EMA20
   if (previousRsi <= CONFIG.rsiOversold && currentRsi > CONFIG.rsiOversold) {
+    if (!trend?.bullish) return null;
+
     return {
       signal: 'BUY',
-      reason: 'RSI crossover above oversold',
+      reason: 'RSI crossover above oversold with 15m EMA9>EMA20 filter',
       tokenAddress: token.tokenAddress,
       symbol: token.symbol,
       poolAddress: token.primaryPool,
-      timeframe: `${CONFIG.klineAggregate}${CONFIG.klineTimeframe === 'minute' ? 'm' : CONFIG.klineTimeframe}`,
+      timeframe: `${CONFIG.signalAggregate}m`,
+      trendTimeframe: `${CONFIG.trendAggregate}m`,
+      emaFast: Number(trend.emaFast.toFixed(8)),
+      emaSlow: Number(trend.emaSlow.toFixed(8)),
       rsi: Number(currentRsi.toFixed(2)),
       price: Number(closePrice.toFixed(8)),
       at: new Date().toISOString(),
@@ -109,7 +153,10 @@ function buildSignal(token, previousRsi, currentRsi, closePrice) {
       tokenAddress: token.tokenAddress,
       symbol: token.symbol,
       poolAddress: token.primaryPool,
-      timeframe: `${CONFIG.klineAggregate}${CONFIG.klineTimeframe === 'minute' ? 'm' : CONFIG.klineTimeframe}`,
+      timeframe: `${CONFIG.signalAggregate}m`,
+      trendTimeframe: `${CONFIG.trendAggregate}m`,
+      emaFast: trend ? Number(trend.emaFast.toFixed(8)) : null,
+      emaSlow: trend ? Number(trend.emaSlow.toFixed(8)) : null,
       rsi: Number(currentRsi.toFixed(2)),
       price: Number(closePrice.toFixed(8)),
       at: new Date().toISOString(),
@@ -145,15 +192,19 @@ async function main() {
   const signals = [];
   for (const token of tradable) {
     try {
-      const ohlcv = await fetchPoolOhlcv(token.primaryPool);
-      const closes = ohlcv.map((x) => safeNumber(x[4])).filter((x) => x > 0);
-      const rsis = calcRsi(closes, CONFIG.rsiPeriod);
+      const signalOhlcv = await fetchPoolOhlcv(token.primaryPool, CONFIG.signalTimeframe, CONFIG.signalAggregate, CONFIG.signalLimit);
+      const signalCloses = signalOhlcv.map((x) => safeNumber(x[4])).filter((x) => x > 0);
+      const rsis = calcRsi(signalCloses, CONFIG.rsiPeriod);
       if (rsis.length < 2) continue;
+
+      const trendOhlcv = await fetchPoolOhlcv(token.primaryPool, CONFIG.trendTimeframe, CONFIG.trendAggregate, CONFIG.trendLimit);
+      const trendCloses = trendOhlcv.map((x) => safeNumber(x[4])).filter((x) => x > 0);
+      const trend = getEntryTrend(trendCloses);
 
       const previousRsi = rsis[rsis.length - 2];
       const currentRsi = rsis[rsis.length - 1];
-      const closePrice = closes[closes.length - 1];
-      const signal = buildSignal(token, previousRsi, currentRsi, closePrice);
+      const closePrice = signalCloses[signalCloses.length - 1];
+      const signal = buildSignal(token, previousRsi, currentRsi, closePrice, trend);
       if (!signal) continue;
 
       const webhookResult = await sendWebhook(signal);
@@ -166,6 +217,10 @@ async function main() {
   const out = {
     generatedAt: new Date().toISOString(),
     mode: 'signal_only_no_trade_execution',
+    strategy: {
+      signalKline: `${CONFIG.signalAggregate}m`,
+      entryFilter: `${CONFIG.trendAggregate}m EMA${CONFIG.entryEmaFast} > EMA${CONFIG.entryEmaSlow}`,
+    },
     scanned: tradable.length,
     signals,
   };
