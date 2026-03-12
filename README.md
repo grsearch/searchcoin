@@ -55,16 +55,19 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 
 ## 主要环境变量（白名单构建）
 
-- `TOP_N`（默认 `20`）
+- `TOP_N`（默认 `30`）
 - `MIN_POOL_AGE_HOURS`（默认 `48`）
 - `MAX_POOL_AGE_HOURS`（默认 `8760`，约 1 年）
-- `MIN_LIQUIDITY_USD`（默认 `100000`）
-- `MIN_VOLUME_24H_USD`（默认 `500000`）
-- `MIN_TX_COUNT_24H`（默认 `10000`）
+- `MIN_LIQUIDITY_USD`（默认 `80000`）
+- `MIN_VOLUME_24H_USD`（默认 `300000`）
+- `MIN_TX_COUNT_24H`（默认 `3000`）
 - `MIN_FDV_USD`（默认 `500000`）
 - `MAX_FDV_USD`（默认 `5000000`）
-- `MIN_REALIZED_VOL_5M`（默认 `0.02`）
 - `MIN_VOLUME_LIQUIDITY_RATIO`（默认 `4`）
+- `MIN_AVG_RANGE_5M`（默认 `0.035`）
+- `MIN_RSI_SWING`（默认 `35`）
+- `MIN_REVERSALS_5M`（默认 `12`）
+- `MIN_PRICE_CHANGE_24H`（默认 `0.10`）
 - `MIN_P90_RANGE_PCT_5M`（默认 `0.035`）
 - `MIN_BODY_BARS_RATIO`（默认 `0.45`）
 - 其他：`GECKO_API_KEY`、`GECKO_AUTH_MODE`、`NETWORK`、`OUTPUT_PATH`、`BLACKLIST_MINTS`、`QUOTE_MINT`
@@ -130,14 +133,16 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 如果你发现选出来的币 5m 波动不够，可以把阈值再拉高：
 
 ```bash
-TOP_N=20 \
+TOP_N=30 \
 MIN_ATR_PCT_5M14=0.06 \
-MIN_AVG_RANGE_PCT_5M_24H=0.03 \
-MIN_REALIZED_VOL_5M=0.025 \
+MIN_AVG_RANGE_5M=0.04 \
 MIN_VOLUME_LIQUIDITY_RATIO=5 \
+MIN_RSI_SWING=38 \
+MIN_REVERSALS_5M=14 \
+MIN_PRICE_CHANGE_24H=0.12 \
 MIN_P90_RANGE_PCT_5M=0.045 \
 MIN_BODY_BARS_RATIO=0.5 \
 npm run build:whitelist
 ```
 
-建议先看 Dashboard 里的 `Vol/Liq`、`ATR%`、`RV(5m)`、`P90 Range%` 四列，再逐步调参。
+建议先看 Dashboard 里的 `Vol/Liq`、`ATR%`、`P90 Range%`、`RSI Swing`、`Reversals` 五列，再逐步调参。

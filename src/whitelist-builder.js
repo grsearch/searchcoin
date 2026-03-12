@@ -11,20 +11,23 @@ const CONFIG = {
   network: process.env.NETWORK ?? 'solana',
   quoteMint: process.env.QUOTE_MINT ?? 'So11111111111111111111111111111111111111112',
   outputPath: process.env.OUTPUT_PATH ?? 'whitelist.json',
-  topN: Number(process.env.TOP_N ?? 20),
+  topN: Number(process.env.TOP_N ?? 30),
   minPoolAgeHours: Number(process.env.MIN_POOL_AGE_HOURS ?? 48),
   maxPoolAgeHours: Number(process.env.MAX_POOL_AGE_HOURS ?? 8760),
-  minLiquidityUsd: Number(process.env.MIN_LIQUIDITY_USD ?? 100_000),
-  minVolume24hUsd: Number(process.env.MIN_VOLUME_24H_USD ?? 500_000),
-  minTxCount24h: Number(process.env.MIN_TX_COUNT_24H ?? 10_000),
+  minLiquidityUsd: Number(process.env.MIN_LIQUIDITY_USD ?? 80_000),
+  minVolume24hUsd: Number(process.env.MIN_VOLUME_24H_USD ?? 300_000),
+  minTxCount24h: Number(process.env.MIN_TX_COUNT_24H ?? 3_000),
   minFdvUsd: Number(process.env.MIN_FDV_USD ?? 500_000),
   maxFdvUsd: Number(process.env.MAX_FDV_USD ?? 5_000_000),
   minAtrPct5m14: Number(process.env.MIN_ATR_PCT_5M14 ?? 0.05),
-  minAvgRangePct5m24h: Number(process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.025),
-  minRealizedVol5m: Number(process.env.MIN_REALIZED_VOL_5M ?? 0.02),
+  minAvgRangePct5m: Number(process.env.MIN_AVG_RANGE_5M ?? process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.035),
+  minRsiSwing: Number(process.env.MIN_RSI_SWING ?? 35),
+  minReversals5m: Number(process.env.MIN_REVERSALS_5M ?? 12),
+  minPriceChange24h: Number(process.env.MIN_PRICE_CHANGE_24H ?? 0.1),
   minVolumeLiquidityRatio: Number(process.env.MIN_VOLUME_LIQUIDITY_RATIO ?? 4),
   minP90RangePct5m: Number(process.env.MIN_P90_RANGE_PCT_5M ?? 0.035),
   minBodyBarsRatio: Number(process.env.MIN_BODY_BARS_RATIO ?? 0.45),
+  rsiPeriod: Number(process.env.RSI_PERIOD ?? 14),
   minDataPoints: Number(process.env.MIN_OHLCV_POINTS ?? 120),
   requestDelayMs: Number(process.env.REQUEST_DELAY_MS ?? 200),
   jupiterQuoteAmount: Number(process.env.JUPITER_QUOTE_AMOUNT ?? 1000000),
@@ -51,6 +54,41 @@ function parsePoolAgeHours(createdAt) {
 
 function safeGet(obj, ...keys) {
   return keys.reduce((acc, key) => (acc?.[key] == null ? undefined : acc[key]), obj);
+}
+
+function asRatio(value) {
+  const n = asNumber(value, 0);
+  return Math.abs(n) > 1.5 ? n / 100 : n;
+}
+
+function calcRsiSeries(closes, period) {
+  if (closes.length <= period) return [];
+  const rsis = [];
+  let gainSum = 0;
+  let lossSum = 0;
+
+  for (let i = 1; i <= period; i += 1) {
+    const diff = closes[i] - closes[i - 1];
+    gainSum += diff > 0 ? diff : 0;
+    lossSum += diff < 0 ? -diff : 0;
+  }
+
+  let avgGain = gainSum / period;
+  let avgLoss = lossSum / period;
+  let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+  rsis.push(100 - 100 / (1 + rs));
+
+  for (let i = period + 1; i < closes.length; i += 1) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    rsis.push(100 - 100 / (1 + rs));
+  }
+
+  return rsis;
 }
 
 function percentileRanks(values) {
@@ -141,6 +179,7 @@ function computeOHLCVMetrics(candles) {
   const returns = [];
   const amplitudes = [];
   const wickRatios = [];
+  const closes = [];
 
   for (let i = 0; i < bars.length; i += 1) {
     const curr = bars[i];
@@ -149,6 +188,7 @@ function computeOHLCVMetrics(candles) {
     trueRanges.push(tr);
 
     if (i > 0 && prevClose > 0) returns.push(Math.log(curr.close / prevClose));
+    closes.push(curr.close);
 
     amplitudes.push((curr.high - curr.low) / curr.close);
 
@@ -171,7 +211,21 @@ function computeOHLCVMetrics(candles) {
   const avgWickRatio = wickRatios.reduce((s, x) => s + x, 0) / wickRatios.length;
   const bodyBarsRatio = wickRatios.filter((w) => w < 0.6).length / wickRatios.length;
 
-  return { atrPct, realizedVol, avgRangePct, p90RangePct, avgWickRatio, bodyBarsRatio };
+  let reversals5m = 0;
+  let prevDir = 0;
+  for (let i = 1; i < closes.length; i += 1) {
+    const diff = closes[i] - closes[i - 1];
+    const dir = diff > 0 ? 1 : diff < 0 ? -1 : 0;
+    if (dir !== 0 && prevDir !== 0 && dir !== prevDir) reversals5m += 1;
+    if (dir !== 0) prevDir = dir;
+  }
+
+  const rsiSeries = calcRsiSeries(closes, CONFIG.rsiPeriod);
+  const maxRsi = rsiSeries.length ? Math.max(...rsiSeries) : 50;
+  const minRsi = rsiSeries.length ? Math.min(...rsiSeries) : 50;
+  const rsiSwing = maxRsi - minRsi;
+
+  return { atrPct, realizedVol, avgRangePct, p90RangePct, avgWickRatio, bodyBarsRatio, reversals5m, rsiSwing };
 }
 
 async function fetchJson(url) {
@@ -194,6 +248,12 @@ function buildPoolCandidate(pool) {
   const buys24h = asNumber(safeGet(attrs, 'transactions', 'h24', 'buys'));
   const sells24h = asNumber(safeGet(attrs, 'transactions', 'h24', 'sells'));
   const txCount24h = buys24h + sells24h;
+  const priceChange24h = asRatio(
+    safeGet(attrs, 'price_change_percentage', 'h24')
+      ?? safeGet(attrs, 'price_percent_change', 'h24')
+      ?? attrs.price_change_24h
+      ?? attrs.price_change_percentage_24h,
+  );
   const fdvUsd = asNumber(attrs.fdv_usd ?? attrs.market_cap_usd);
   const ageHours = parsePoolAgeHours(attrs.pool_created_at);
 
@@ -209,6 +269,7 @@ function buildPoolCandidate(pool) {
     liquidityUsd,
     volume24hUsd,
     txCount24h,
+    priceChange24h,
     fdvUsd,
     ageHours,
   };
@@ -249,6 +310,7 @@ function passHardFilters(pool) {
   if (pool.liquidityUsd < CONFIG.minLiquidityUsd) return false;
   if (pool.volume24hUsd < CONFIG.minVolume24hUsd) return false;
   if (pool.txCount24h < CONFIG.minTxCount24h) return false;
+  if (Math.abs(pool.priceChange24h) < CONFIG.minPriceChange24h) return false;
   if (pool.fdvUsd < CONFIG.minFdvUsd || pool.fdvUsd > CONFIG.maxFdvUsd) return false;
   return true;
 }
@@ -306,8 +368,9 @@ async function main() {
       if (!metrics) continue;
 
       if (metrics.atrPct < CONFIG.minAtrPct5m14) continue;
-      if (metrics.avgRangePct < CONFIG.minAvgRangePct5m24h) continue;
-      if (metrics.realizedVol < CONFIG.minRealizedVol5m) continue;
+      if (metrics.avgRangePct < CONFIG.minAvgRangePct5m) continue;
+      if (metrics.rsiSwing < CONFIG.minRsiSwing) continue;
+      if (metrics.reversals5m < CONFIG.minReversals5m) continue;
       if ((pool.volume24hUsd / Math.max(pool.liquidityUsd, 1)) < CONFIG.minVolumeLiquidityRatio) continue;
       if (metrics.p90RangePct < CONFIG.minP90RangePct5m) continue;
       if (metrics.bodyBarsRatio < CONFIG.minBodyBarsRatio) continue;
@@ -372,6 +435,9 @@ async function main() {
       avgRangePct5m24h: Number((token.avgRangePct * 100).toFixed(3)),
       realizedVol5m: Number(token.realizedVol.toFixed(6)),
       p90RangePct5m: Number((token.p90RangePct * 100).toFixed(3)),
+      rsiSwing5m: Number(token.rsiSwing.toFixed(2)),
+      reversals5m: token.reversals5m,
+      priceChange24hPct: Number((token.priceChange24h * 100).toFixed(3)),
       recommendedTimeframe: recommendTimeframe(token.atrPct, token.realizedVol),
       tradable: true,
     });
@@ -393,11 +459,13 @@ async function main() {
       minLiquidityUsd: CONFIG.minLiquidityUsd,
       minVolume24hUsd: CONFIG.minVolume24hUsd,
       minTxCount24h: CONFIG.minTxCount24h,
+      minPriceChange24h: CONFIG.minPriceChange24h,
       minFdvUsd: CONFIG.minFdvUsd,
       maxFdvUsd: CONFIG.maxFdvUsd,
       minAtrPct5m14: CONFIG.minAtrPct5m14,
-      minAvgRangePct5m24h: CONFIG.minAvgRangePct5m24h,
-      minRealizedVol5m: CONFIG.minRealizedVol5m,
+      minAvgRangePct5m: CONFIG.minAvgRangePct5m,
+      minRsiSwing: CONFIG.minRsiSwing,
+      minReversals5m: CONFIG.minReversals5m,
       minVolumeLiquidityRatio: CONFIG.minVolumeLiquidityRatio,
       minP90RangePct5m: CONFIG.minP90RangePct5m,
       minBodyBarsRatio: CONFIG.minBodyBarsRatio,
