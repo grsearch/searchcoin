@@ -20,9 +20,9 @@ const CONFIG = {
   minFdvUsd: Number(process.env.MIN_FDV_USD ?? 500_000),
   maxFdvUsd: Number(process.env.MAX_FDV_USD ?? 5_000_000),
   minAtrPct5m14: Number(process.env.MIN_ATR_PCT_5M14 ?? 0.05),
-  minAvgRangePct5m: Number(process.env.MIN_AVG_RANGE_5M ?? process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.03),
+  minAvgRangePct5m: Number(process.env.MIN_AVG_RANGE_5M ?? process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.025),
   minRsiSwing: Number(process.env.MIN_RSI_SWING ?? 28),
-  minReversals5m: Number(process.env.MIN_REVERSALS_5M ?? 8),
+  minReversals5m: Number(process.env.MIN_REVERSALS_5M ?? 6),
   minVolumeLiquidityRatio: Number(process.env.MIN_VOLUME_LIQUIDITY_RATIO ?? 3),
   minP90RangePct5m: Number(process.env.MIN_P90_RANGE_PCT_5M ?? 0.03),
   minAvgRange1m: Number(process.env.MIN_AVG_RANGE_1M ?? 0),
@@ -312,6 +312,21 @@ function passHardFilters(pool) {
   return getHardFilterFailReason(pool) == null;
 }
 
+function getSoftMetricFlags(pool, metrics) {
+  const volLiqRatio = pool.volume24hUsd / Math.max(pool.liquidityUsd, 1);
+  return {
+    avgRange5m: metrics.avgRangePct >= CONFIG.minAvgRangePct5m,
+    rsiSwing: metrics.rsiSwing >= CONFIG.minRsiSwing,
+    reversals5m: metrics.reversals5m >= CONFIG.minReversals5m,
+    volLiqRatio: volLiqRatio >= CONFIG.minVolumeLiquidityRatio,
+    p90Range5m: metrics.p90RangePct >= CONFIG.minP90RangePct5m,
+  };
+}
+
+function getSoftPassCount(flags) {
+  return Object.values(flags).filter(Boolean).length;
+}
+
 function getHardFilterFailReason(pool) {
   if (CONFIG.blacklist.has(pool.baseMint)) return 'blacklist';
   if (pool.ageHours < CONFIG.minPoolAgeHours || pool.ageHours > CONFIG.maxPoolAgeHours) return 'age';
@@ -418,25 +433,10 @@ async function main() {
         increaseCounter(metricRejects, 'atr5m');
         continue;
       }
-      if (metrics.avgRangePct < CONFIG.minAvgRangePct5m) {
-        increaseCounter(metricRejects, 'avgRange5m');
-        continue;
-      }
-      if (metrics.rsiSwing < CONFIG.minRsiSwing) {
-        increaseCounter(metricRejects, 'rsiSwing');
-        continue;
-      }
-      if (metrics.reversals5m < CONFIG.minReversals5m) {
-        increaseCounter(metricRejects, 'reversals5m');
-        continue;
-      }
-      if ((pool.volume24hUsd / Math.max(pool.liquidityUsd, 1)) < CONFIG.minVolumeLiquidityRatio) {
-        increaseCounter(metricRejects, 'volLiqRatio');
-        continue;
-      }
-      if (metrics.p90RangePct < CONFIG.minP90RangePct5m) {
-        increaseCounter(metricRejects, 'p90Range5m');
-        continue;
+      const softMetricFlags = getSoftMetricFlags(pool, metrics);
+      const softPassCount = getSoftPassCount(softMetricFlags);
+      for (const [k, passed] of Object.entries(softMetricFlags)) {
+        if (!passed) increaseCounter(metricRejects, `${k}_soft`);
       }
 
       if (CONFIG.minAvgRange1m > 0) {
@@ -449,7 +449,7 @@ async function main() {
         metrics.avgRange1m = avgRange1m;
       }
 
-      enriched.push({ ...pool, ...metrics });
+      enriched.push({ ...pool, ...metrics, softMetricFlags, softPassCount, volLiqRatio: pool.volume24hUsd / Math.max(pool.liquidityUsd, 1) });
     } catch (error) {
       console.warn(`[warn] pool ${pool.poolId} ohlcv failed: ${error.message}`);
     }
@@ -474,16 +474,25 @@ async function main() {
   }
 
   const atrRanks = percentileRanks(enriched.map((x) => x.atrPct));
-  const rvRanks = percentileRanks(enriched.map((x) => x.realizedVol));
   const rangeRanks = percentileRanks(enriched.map((x) => x.avgRangePct));
-  const volLiqRanks = percentileRanks(enriched.map((x) => x.volume24hUsd / Math.max(x.liquidityUsd, 1)));
+  const rsiRanks = percentileRanks(enriched.map((x) => x.rsiSwing));
+  const reversalRanks = percentileRanks(enriched.map((x) => x.reversals5m));
+  const p90RangeRanks = percentileRanks(enriched.map((x) => x.p90RangePct));
+  const volLiqRanks = percentileRanks(enriched.map((x) => x.volLiqRatio));
   const wickRanks = percentileRanks(enriched.map((x) => x.avgWickRatio));
 
   const scored = enriched
     .map((item, i) => {
-      const baseScore = 0.4 * atrRanks[i] + 0.35 * rvRanks[i] + 0.2 * rangeRanks[i] + 0.05 * volLiqRanks[i];
-      const penalty = 0.15 * wickRanks[i] + 0.1 * (1 - item.bodyBarsRatio);
-      return { ...item, finalScore: baseScore - penalty };
+      const baseScore =
+        0.2 * rangeRanks[i]
+        + 0.2 * rsiRanks[i]
+        + 0.2 * reversalRanks[i]
+        + 0.15 * volLiqRanks[i]
+        + 0.15 * p90RangeRanks[i]
+        + 0.1 * atrRanks[i];
+      const softPassBoost = 0.02 * item.softPassCount;
+      const penalty = 0.12 * wickRanks[i] + 0.08 * (1 - item.bodyBarsRatio);
+      return { ...item, finalScore: baseScore + softPassBoost - penalty };
     })
     .sort((a, b) => b.finalScore - a.finalScore)
     .slice(0, CONFIG.topN);
@@ -520,6 +529,9 @@ async function main() {
       p90RangePct5m: Number((token.p90RangePct * 100).toFixed(3)),
       rsiSwing5m: Number(token.rsiSwing.toFixed(2)),
       reversals5m: token.reversals5m,
+      volLiqRatio: Number(token.volLiqRatio.toFixed(3)),
+      softPassCount: token.softPassCount,
+      softMetricFlags: token.softMetricFlags,
       priceChange24hPct: Number((token.priceChange24h * 100).toFixed(3)),
       recommendedTimeframe: recommendTimeframe(token.atrPct, token.realizedVol),
       tradable: true,
@@ -551,6 +563,7 @@ async function main() {
       minVolumeLiquidityRatio: CONFIG.minVolumeLiquidityRatio,
       minP90RangePct5m: CONFIG.minP90RangePct5m,
       minAvgRange1m: CONFIG.minAvgRange1m,
+      metricFilterMode: 'soft_ranked',
     },
     debug: CONFIG.filterDebug ? { hardRejects, metricRejects } : undefined,
     whitelist,

@@ -64,12 +64,13 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - `MIN_FDV_USD`（默认 `500000`）
 - `MAX_FDV_USD`（默认 `5000000`）
 - `MIN_VOLUME_LIQUIDITY_RATIO`（默认 `3`）
-- `MIN_AVG_RANGE_5M`（默认 `0.03`）
+- `MIN_AVG_RANGE_5M`（默认 `0.025`）
 - `MIN_RSI_SWING`（默认 `28`）
-- `MIN_REVERSALS_5M`（默认 `8`）
+- `MIN_REVERSALS_5M`（默认 `6`）
 - `MIN_P90_RANGE_PCT_5M`（默认 `0.03`）
 - `MIN_AVG_RANGE_1M`（默认 `0`，可选 1m 振幅过滤，建议从 `0.012` 开始）
 - `FILTER_DEBUG`（默认 `false`，开启后输出各过滤条件淘汰计数，便于定位“只筛到少量币”的瓶颈）
+- 指标过滤模式：波动类指标使用“软过滤 + 评分排序”（不过早淘汰，最终按分数取 TopN）
 - 其他：`GECKO_API_KEY`、`GECKO_AUTH_MODE`、`NETWORK`、`OUTPUT_PATH`、`BLACKLIST_MINTS`、`QUOTE_MINT`
 
 ## 主要环境变量（信号 / 周期）
@@ -150,9 +151,9 @@ npm run build:whitelist
 ```bash
 TOP_N=40 \
 MIN_VOLUME_LIQUIDITY_RATIO=3 \
-MIN_AVG_RANGE_5M=0.03 \
+MIN_AVG_RANGE_5M=0.025 \
 MIN_RSI_SWING=28 \
-MIN_REVERSALS_5M=8 \
+MIN_REVERSALS_5M=6 \
 MIN_P90_RANGE_PCT_5M=0.03 \
 FILTER_DEBUG=true \
 npm run build:whitelist
