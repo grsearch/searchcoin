@@ -10,8 +10,47 @@ const CONFIG = {
   whitelistPath: process.env.WHITELIST_PATH ?? 'whitelist.json',
   signalLogPath: process.env.SIGNAL_LOG_PATH ?? 'signal-events.jsonl',
   signalLogLimit: Number(process.env.SIGNAL_LOG_LIMIT ?? 200),
+  geckoBaseUrl: process.env.GECKO_BASE_URL ?? 'https://pro-api.coingecko.com/api/v3/onchain',
+  geckoApiKey: process.env.GECKO_API_KEY ?? '',
+  geckoAuthMode: process.env.GECKO_AUTH_MODE ?? 'header',
+  network: process.env.NETWORK ?? 'solana',
   publicDir: path.resolve(process.cwd(), 'public'),
 };
+
+
+function withGeckoAuth(url) {
+  const final = new URL(url);
+  if (CONFIG.geckoApiKey && CONFIG.geckoAuthMode === 'query') {
+    final.searchParams.set('x_cg_pro_api_key', CONFIG.geckoApiKey);
+  }
+  return final.toString();
+}
+
+async function fetchGeckoJson(url) {
+  const headers = { Accept: 'application/json' };
+  if (CONFIG.geckoApiKey && CONFIG.geckoAuthMode === 'header') {
+    headers['x-cg-pro-api-key'] = CONFIG.geckoApiKey;
+  }
+  const res = await fetch(withGeckoAuth(url), { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function fetchTokenSymbols(addresses) {
+  const uniq = [...new Set(addresses.map((x) => (x || '').trim()).filter(Boolean))];
+  if (!uniq.length) return new Map();
+  const out = new Map();
+  try {
+    const url = `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/tokens/multi/${uniq.join(',')}`;
+    const json = await fetchGeckoJson(url);
+    for (const item of json?.data ?? []) {
+      const attrs = item?.attributes ?? {};
+      const addr = (attrs.address ?? '').toLowerCase();
+      if (addr) out.set(addr, attrs.symbol ?? '');
+    }
+  } catch {}
+  return out;
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -25,12 +64,21 @@ async function readWhitelist() {
     const raw = await fs.readFile(CONFIG.whitelistPath, 'utf8');
     const parsed = JSON.parse(raw);
     const whitelist = Array.isArray(parsed?.whitelist) ? parsed.whitelist : [];
+    const missing = whitelist.filter((x) => !x?.symbol && x?.tokenAddress).map((x) => x.tokenAddress);
+    const symbolMap = await fetchTokenSymbols(missing);
+    const enriched = whitelist.map((item) => {
+      if (item?.symbol) return item;
+      const key = (item?.tokenAddress ?? '').toLowerCase();
+      const sym = symbolMap.get(key) || `${(item?.tokenAddress ?? '').slice(0, 6)}...`;
+      return { ...item, symbol: sym };
+    });
+
     return {
       generatedAt: parsed?.generatedAt ?? null,
       config: parsed?.config ?? {},
-      count: whitelist.length,
-      tradableCount: whitelist.filter((x) => x?.tradable === true).length,
-      whitelist,
+      count: enriched.length,
+      tradableCount: enriched.filter((x) => x?.tradable === true).length,
+      whitelist: enriched,
     };
   } catch {
     return { generatedAt: null, config: {}, count: 0, tradableCount: 0, whitelist: [] };

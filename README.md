@@ -101,6 +101,13 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 3. 你的交易执行程序只消费 webhook 信号，本仓库不执行交易下单。
 
 
+## Symbol 元数据
+
+为避免 symbol 为空，程序会优先通过 CoinGecko Onchain Token Info 接口按合约地址补全：
+
+- `/onchain/networks/{network}/tokens/multi/{addresses}`
+- `/onchain/networks/{network}/tokens/{address}/info`（兜底）
+
 ## Dashboard
 
 新增本地 Dashboard（参考你给的方向，结合当前仓库实现）：

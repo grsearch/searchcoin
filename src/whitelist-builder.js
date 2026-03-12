@@ -74,6 +74,46 @@ function normalizeTokenId(tokenId) {
   return tokenId;
 }
 
+async function fetchTokenInfosMulti(addresses) {
+  const uniq = [...new Set(addresses.map((x) => (x || '').trim()).filter(Boolean))];
+  if (!uniq.length) return new Map();
+
+  const url = `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/tokens/multi/${uniq.join(',')}`;
+  try {
+    const data = await fetchJson(url);
+    const items = Array.isArray(data?.data) ? data.data : [];
+    const out = new Map();
+    for (const item of items) {
+      const attrs = item?.attributes ?? {};
+      const address = normalizeTokenId(attrs.address ?? attrs.token_address ?? item?.id ?? '').toLowerCase();
+      if (!address) continue;
+      out.set(address, {
+        symbol: attrs.symbol ?? '',
+        name: attrs.name ?? '',
+      });
+    }
+    return out;
+  } catch (error) {
+    console.warn(`[warn] token info multi failed: ${error.message}`);
+    return new Map();
+  }
+}
+
+async function fetchTokenInfo(address) {
+  if (!address) return null;
+  const url = `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/tokens/${address}/info`;
+  try {
+    const data = await fetchJson(url);
+    const attrs = data?.data?.attributes ?? {};
+    return {
+      symbol: attrs.symbol ?? '',
+      name: attrs.name ?? '',
+    };
+  } catch {
+    return null;
+  }
+}
+
 function computeOHLCVMetrics(candles) {
   const bars = candles
     .map((c) => ({
@@ -287,14 +327,24 @@ async function main() {
     .sort((a, b) => b.finalScore - a.finalScore)
     .slice(0, CONFIG.topN);
 
+  const tokenInfoMap = await fetchTokenInfosMulti(scored.map((x) => x.baseMint));
+
   const whitelist = [];
   for (const token of scored) {
     const routable = await checkJupiterRoutable(token.baseMint);
     if (!routable) continue;
 
+    const key = (token.baseMint ?? '').toLowerCase();
+    let resolvedSymbol = tokenInfoMap.get(key)?.symbol ?? token.symbol ?? '';
+    if (!resolvedSymbol) {
+      const info = await fetchTokenInfo(token.baseMint);
+      resolvedSymbol = info?.symbol ?? '';
+    }
+    if (!resolvedSymbol) resolvedSymbol = `${(token.baseMint ?? '').slice(0, 6)}...`;
+
     whitelist.push({
       tokenAddress: token.baseMint,
-      symbol: token.symbol,
+      symbol: resolvedSymbol,
       primaryPool: token.poolId,
       finalScore: Number(token.finalScore.toFixed(6)),
       liquidityUsd: Number(token.liquidityUsd.toFixed(2)),
