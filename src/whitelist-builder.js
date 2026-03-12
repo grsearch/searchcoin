@@ -20,12 +20,14 @@ const CONFIG = {
   minFdvUsd: Number(process.env.MIN_FDV_USD ?? 500_000),
   maxFdvUsd: Number(process.env.MAX_FDV_USD ?? 5_000_000),
   minAtrPct5m14: Number(process.env.MIN_ATR_PCT_5M14 ?? 0.05),
-  minAvgRangePct5m: Number(process.env.MIN_AVG_RANGE_5M ?? process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.035),
-  minRsiSwing: Number(process.env.MIN_RSI_SWING ?? 35),
-  minReversals5m: Number(process.env.MIN_REVERSALS_5M ?? 12),
-  minVolumeLiquidityRatio: Number(process.env.MIN_VOLUME_LIQUIDITY_RATIO ?? 4),
-  minP90RangePct5m: Number(process.env.MIN_P90_RANGE_PCT_5M ?? 0.035),
+  minAvgRangePct5m: Number(process.env.MIN_AVG_RANGE_5M ?? process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.03),
+  minRsiSwing: Number(process.env.MIN_RSI_SWING ?? 28),
+  minReversals5m: Number(process.env.MIN_REVERSALS_5M ?? 8),
+  minVolumeLiquidityRatio: Number(process.env.MIN_VOLUME_LIQUIDITY_RATIO ?? 3),
+  minP90RangePct5m: Number(process.env.MIN_P90_RANGE_PCT_5M ?? 0.03),
+  minAvgRange1m: Number(process.env.MIN_AVG_RANGE_1M ?? 0),
   rsiPeriod: Number(process.env.RSI_PERIOD ?? 14),
+  filterDebug: (process.env.FILTER_DEBUG ?? 'false').toLowerCase() === 'true',
   minDataPoints: Number(process.env.MIN_OHLCV_POINTS ?? 120),
   requestDelayMs: Number(process.env.REQUEST_DELAY_MS ?? 200),
   jupiterQuoteAmount: Number(process.env.JUPITER_QUOTE_AMOUNT ?? 1000000),
@@ -52,6 +54,10 @@ function parsePoolAgeHours(createdAt) {
 
 function safeGet(obj, ...keys) {
   return keys.reduce((acc, key) => (acc?.[key] == null ? undefined : acc[key]), obj);
+}
+
+function increaseCounter(map, key) {
+  map[key] = (map[key] ?? 0) + 1;
 }
 
 function asRatio(value) {
@@ -303,13 +309,17 @@ async function fetchCandidatePools() {
 }
 
 function passHardFilters(pool) {
-  if (CONFIG.blacklist.has(pool.baseMint)) return false;
-  if (pool.ageHours < CONFIG.minPoolAgeHours || pool.ageHours > CONFIG.maxPoolAgeHours) return false;
-  if (pool.liquidityUsd < CONFIG.minLiquidityUsd) return false;
-  if (pool.volume24hUsd < CONFIG.minVolume24hUsd) return false;
-  if (pool.txCount24h < CONFIG.minTxCount24h) return false;
-  if (pool.fdvUsd < CONFIG.minFdvUsd || pool.fdvUsd > CONFIG.maxFdvUsd) return false;
-  return true;
+  return getHardFilterFailReason(pool) == null;
+}
+
+function getHardFilterFailReason(pool) {
+  if (CONFIG.blacklist.has(pool.baseMint)) return 'blacklist';
+  if (pool.ageHours < CONFIG.minPoolAgeHours || pool.ageHours > CONFIG.maxPoolAgeHours) return 'age';
+  if (pool.liquidityUsd < CONFIG.minLiquidityUsd) return 'liquidity';
+  if (pool.volume24hUsd < CONFIG.minVolume24hUsd) return 'volume24h';
+  if (pool.txCount24h < CONFIG.minTxCount24h) return 'txCount24h';
+  if (pool.fdvUsd < CONFIG.minFdvUsd || pool.fdvUsd > CONFIG.maxFdvUsd) return 'fdv';
+  return null;
 }
 
 async function fetchPoolOhlcv(poolId) {
@@ -317,6 +327,27 @@ async function fetchPoolOhlcv(poolId) {
   const data = await fetchJson(url);
   const list = safeGet(data, 'data', 'attributes', 'ohlcv_list') ?? [];
   return Array.isArray(list) ? list.reverse() : [];
+}
+
+async function fetchPoolOhlcv1m(poolId) {
+  const url = `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/pools/${poolId}/ohlcv/minute?aggregate=1&limit=180`;
+  const data = await fetchJson(url);
+  const list = safeGet(data, 'data', 'attributes', 'ohlcv_list') ?? [];
+  return Array.isArray(list) ? list.reverse() : [];
+}
+
+function computeAvgRangePct(candles) {
+  const amplitudes = candles
+    .map((c) => {
+      const high = asNumber(c[2]);
+      const low = asNumber(c[3]);
+      const close = asNumber(c[4]);
+      if (close <= 0 || high < low) return null;
+      return (high - low) / close;
+    })
+    .filter((x) => x != null);
+  if (!amplitudes.length) return 0;
+  return amplitudes.reduce((s, x) => s + x, 0) / amplitudes.length;
 }
 
 async function checkJupiterRoutable(outputMint) {
@@ -352,24 +383,71 @@ async function main() {
 
   console.log('[info] fetching candidate pools from CoinGecko Pro /onchain...');
   const candidates = await fetchCandidatePools();
-  const hardPassed = candidates.filter(passHardFilters);
+  const hardPassed = [];
+  const hardRejects = {};
+  for (const pool of candidates) {
+    const reason = getHardFilterFailReason(pool);
+    if (reason) {
+      increaseCounter(hardRejects, reason);
+      continue;
+    }
+    hardPassed.push(pool);
+  }
 
   console.log(`[info] candidates=${candidates.length}, hard_passed=${hardPassed.length}`);
+  if (CONFIG.filterDebug) {
+    console.log(`[debug] hard_rejects=${JSON.stringify(hardRejects)}`);
+  }
 
   const enriched = [];
+  const metricRejects = {};
   for (const pool of hardPassed) {
     try {
       const candles = await fetchPoolOhlcv(pool.poolId);
-      if (candles.length < CONFIG.minDataPoints) continue;
+      if (candles.length < CONFIG.minDataPoints) {
+        increaseCounter(metricRejects, 'ohlcv_points');
+        continue;
+      }
       const metrics = computeOHLCVMetrics(candles);
-      if (!metrics) continue;
+      if (!metrics) {
+        increaseCounter(metricRejects, 'metrics_null');
+        continue;
+      }
 
-      if (metrics.atrPct < CONFIG.minAtrPct5m14) continue;
-      if (metrics.avgRangePct < CONFIG.minAvgRangePct5m) continue;
-      if (metrics.rsiSwing < CONFIG.minRsiSwing) continue;
-      if (metrics.reversals5m < CONFIG.minReversals5m) continue;
-      if ((pool.volume24hUsd / Math.max(pool.liquidityUsd, 1)) < CONFIG.minVolumeLiquidityRatio) continue;
-      if (metrics.p90RangePct < CONFIG.minP90RangePct5m) continue;
+      if (metrics.atrPct < CONFIG.minAtrPct5m14) {
+        increaseCounter(metricRejects, 'atr5m');
+        continue;
+      }
+      if (metrics.avgRangePct < CONFIG.minAvgRangePct5m) {
+        increaseCounter(metricRejects, 'avgRange5m');
+        continue;
+      }
+      if (metrics.rsiSwing < CONFIG.minRsiSwing) {
+        increaseCounter(metricRejects, 'rsiSwing');
+        continue;
+      }
+      if (metrics.reversals5m < CONFIG.minReversals5m) {
+        increaseCounter(metricRejects, 'reversals5m');
+        continue;
+      }
+      if ((pool.volume24hUsd / Math.max(pool.liquidityUsd, 1)) < CONFIG.minVolumeLiquidityRatio) {
+        increaseCounter(metricRejects, 'volLiqRatio');
+        continue;
+      }
+      if (metrics.p90RangePct < CONFIG.minP90RangePct5m) {
+        increaseCounter(metricRejects, 'p90Range5m');
+        continue;
+      }
+
+      if (CONFIG.minAvgRange1m > 0) {
+        const candles1m = await fetchPoolOhlcv1m(pool.poolId);
+        const avgRange1m = computeAvgRangePct(candles1m);
+        if (avgRange1m < CONFIG.minAvgRange1m) {
+          increaseCounter(metricRejects, 'avgRange1m');
+          continue;
+        }
+        metrics.avgRange1m = avgRange1m;
+      }
 
       enriched.push({ ...pool, ...metrics });
     } catch (error) {
@@ -381,9 +459,17 @@ async function main() {
   if (!enriched.length) {
     await fs.writeFile(
       CONFIG.outputPath,
-      JSON.stringify({ generatedAt: new Date().toISOString(), config: { network: CONFIG.network }, whitelist: [] }, null, 2),
+      JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        config: { network: CONFIG.network },
+        debug: CONFIG.filterDebug ? { hardRejects, metricRejects } : undefined,
+        whitelist: [],
+      }, null, 2),
     );
     console.log('[info] no pools passed filters; outputting empty whitelist');
+    if (CONFIG.filterDebug) {
+      console.log(`[debug] metric_rejects=${JSON.stringify(metricRejects)}`);
+    }
     return;
   }
 
@@ -429,6 +515,7 @@ async function main() {
       ageHours: Number(token.ageHours.toFixed(2)),
       atrPct5m14: Number((token.atrPct * 100).toFixed(3)),
       avgRangePct5m24h: Number((token.avgRangePct * 100).toFixed(3)),
+      avgRangePct1m: token.avgRange1m != null ? Number((token.avgRange1m * 100).toFixed(3)) : null,
       realizedVol5m: Number(token.realizedVol.toFixed(6)),
       p90RangePct5m: Number((token.p90RangePct * 100).toFixed(3)),
       rsiSwing5m: Number(token.rsiSwing.toFixed(2)),
@@ -463,7 +550,9 @@ async function main() {
       minReversals5m: CONFIG.minReversals5m,
       minVolumeLiquidityRatio: CONFIG.minVolumeLiquidityRatio,
       minP90RangePct5m: CONFIG.minP90RangePct5m,
+      minAvgRange1m: CONFIG.minAvgRange1m,
     },
+    debug: CONFIG.filterDebug ? { hardRejects, metricRejects } : undefined,
     whitelist,
   };
 

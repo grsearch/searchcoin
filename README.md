@@ -3,7 +3,7 @@
 本程序**不负责实际下单交易**。它负责：
 
 1. 每 6 小时扫描并发现适合交易的币
-2. 生成并更新白名单（仅保留前 20）
+2. 生成并更新白名单（默认保留前 40，可配）
 3. 监控 K 线并跑 RSI 信号策略（5m 主周期）
 4. 通过 webhook 发送买卖信号
 5. 币种退出白名单时，优先发送 SELL 退出信号
@@ -14,7 +14,7 @@
 - 数据源：CoinGecko Pro Onchain（GeckoTerminal 数据）
 - 候选来源：`trending_pools`、`new_pools`、`megafilter`
 - 硬过滤：池龄、流动性、24h 成交额、24h 交易笔数、FDV 区间、黑名单
-- 白名单规则：默认只保留前 `20`（`TOP_N` 默认值）
+- 白名单规则：默认保留前 `40`（`TOP_N` 默认值，可调整）
 - 白名单输出：`whitelist.json`
 - 信号输出：基于 RSI 的 BUY/SELL webhook 消息（仅信号，不交易）
 - 开单条件：15m K线下 EMA9 > EMA20 才允许 BUY
@@ -63,11 +63,13 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - `MIN_TX_COUNT_24H`（默认 `3000`）
 - `MIN_FDV_USD`（默认 `500000`）
 - `MAX_FDV_USD`（默认 `5000000`）
-- `MIN_VOLUME_LIQUIDITY_RATIO`（默认 `4`）
-- `MIN_AVG_RANGE_5M`（默认 `0.035`）
-- `MIN_RSI_SWING`（默认 `35`）
-- `MIN_REVERSALS_5M`（默认 `12`）
-- `MIN_P90_RANGE_PCT_5M`（默认 `0.035`）
+- `MIN_VOLUME_LIQUIDITY_RATIO`（默认 `3`）
+- `MIN_AVG_RANGE_5M`（默认 `0.03`）
+- `MIN_RSI_SWING`（默认 `28`）
+- `MIN_REVERSALS_5M`（默认 `8`）
+- `MIN_P90_RANGE_PCT_5M`（默认 `0.03`）
+- `MIN_AVG_RANGE_1M`（默认 `0`，可选 1m 振幅过滤，建议从 `0.012` 开始）
+- `FILTER_DEBUG`（默认 `false`，开启后输出各过滤条件淘汰计数，便于定位“只筛到少量币”的瓶颈）
 - 其他：`GECKO_API_KEY`、`GECKO_AUTH_MODE`、`NETWORK`、`OUTPUT_PATH`、`BLACKLIST_MINTS`、`QUOTE_MINT`
 
 ## 主要环境变量（信号 / 周期）
@@ -142,3 +144,18 @@ npm run build:whitelist
 ```
 
 建议先看 Dashboard 里的 `Vol/Liq`、`ATR%`、`P90 Range%`、`RSI Swing`、`Reversals` 五列，再逐步调参。
+
+如果你遇到“只筛出 3 个币”，建议先用更宽松模板：
+
+```bash
+TOP_N=40 \
+MIN_VOLUME_LIQUIDITY_RATIO=3 \
+MIN_AVG_RANGE_5M=0.03 \
+MIN_RSI_SWING=28 \
+MIN_REVERSALS_5M=8 \
+MIN_P90_RANGE_PCT_5M=0.03 \
+FILTER_DEBUG=true \
+npm run build:whitelist
+```
+
+开启 `FILTER_DEBUG=true` 后，`whitelist.json` 会附带 `debug.hardRejects` 和 `debug.metricRejects`，可快速看到是哪个条件在卡候选币。
