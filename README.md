@@ -7,6 +7,7 @@
 3. 监控 K 线并跑 RSI 信号策略（5m 主周期）
 4. 通过 webhook 发送买卖信号
 5. 币种退出白名单时，优先发送 SELL 退出信号
+6. Dashboard 可视化白名单状态
 
 ## 功能概览
 
@@ -20,6 +21,13 @@
 - 6 小时周期更新：退出白名单的币会优先发送 `SELL + EXIT_WHITELIST`
 
 ## CLI
+
+- 启动 Dashboard：
+
+```bash
+DASHBOARD_PORT=4173 npm run run:dashboard
+```
+
 
 - 生成白名单：
 
@@ -90,3 +98,14 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 ```
 
 3. 你的交易执行程序只消费 webhook 信号，本仓库不执行交易下单。
+
+
+## Dashboard
+
+新增本地 Dashboard（参考你给的方向，结合当前仓库实现）：
+
+- 页面地址：`/`
+- API：`/api/whitelist`、`/api/health`
+- 展示内容：白名单数量、可交易数量、TopN、生成时间、币种列表
+
+你可以把该页面接入 OpenClaw 面板或反向代理到公网。

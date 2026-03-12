@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SearchCoin Dashboard</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; background: #0b1020; color: #e8eeff; }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+      h1 { margin: 0 0 10px; }
+      .cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin: 16px 0 24px; }
+      .card { background:#151c33; border:1px solid #2a3560; border-radius: 10px; padding: 14px; }
+      .label { font-size: 12px; color: #9db0ff; }
+      .value { font-size: 22px; font-weight: 700; margin-top: 6px; }
+      table { width:100%; border-collapse: collapse; background:#121930; border-radius: 10px; overflow: hidden; }
+      th, td { padding: 10px; border-bottom: 1px solid #263156; text-align: left; font-size: 13px; }
+      th { color:#9db0ff; }
+      .ok { color: #58dd9d; }
+      .muted { color: #95a0c6; }
+      @media (max-width: 900px){ .cards{grid-template-columns: repeat(2,1fr);} }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>SearchCoin Dashboard</h1>
+      <div class="muted">白名单发现与信号系统（不执行交易）</div>
+
+      <div class="cards">
+        <div class="card"><div class="label">Whitelist Count</div><div class="value" id="count">-</div></div>
+        <div class="card"><div class="label">Tradable Count</div><div class="value" id="tradable">-</div></div>
+        <div class="card"><div class="label">Top N</div><div class="value" id="topn">-</div></div>
+        <div class="card"><div class="label">Generated At</div><div class="value" id="gen" style="font-size:14px">-</div></div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th><th>Token</th><th>Score</th><th>Liquidity</th><th>Volume 24h</th><th>ATR%</th><th>Tradable</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <script>
+      async function load() {
+        const res = await fetch('/api/whitelist');
+        const data = await res.json();
+        document.getElementById('count').textContent = data.count;
+        document.getElementById('tradable').textContent = data.tradableCount;
+        document.getElementById('topn').textContent = data.config?.topN ?? '-';
+        document.getElementById('gen').textContent = data.generatedAt ?? '-';
+
+        const rows = document.getElementById('rows');
+        rows.innerHTML = '';
+        for (const t of data.whitelist || []) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${t.symbol ?? ''}</td><td title="${t.tokenAddress}">${(t.tokenAddress ?? '').slice(0,8)}...</td><td>${t.finalScore ?? ''}</td><td>${t.liquidityUsd ?? ''}</td><td>${t.volume24hUsd ?? ''}</td><td>${t.atrPct5m14 ?? ''}</td><td class="${t.tradable ? 'ok':''}">${t.tradable ? 'YES':'NO'}</td>`;
+          rows.appendChild(tr);
+        }
+      }
+      load();
+      setInterval(load, 30000);
+    </script>
+  </body>
+</html>
