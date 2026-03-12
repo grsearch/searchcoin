@@ -19,8 +19,10 @@ const CONFIG = {
   minTxCount24h: Number(process.env.MIN_TX_COUNT_24H ?? 10_000),
   minFdvUsd: Number(process.env.MIN_FDV_USD ?? 1_000_000),
   maxFdvUsd: Number(process.env.MAX_FDV_USD ?? 8_000_000),
-  minAtrPct5m14: Number(process.env.MIN_ATR_PCT_5M14 ?? 0.025),
-  minAvgRangePct5m24h: Number(process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.012),
+  minAtrPct5m14: Number(process.env.MIN_ATR_PCT_5M14 ?? 0.04),
+  minAvgRangePct5m24h: Number(process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.02),
+  minRealizedVol5m: Number(process.env.MIN_REALIZED_VOL_5M ?? 0.015),
+  minVolumeLiquidityRatio: Number(process.env.MIN_VOLUME_LIQUIDITY_RATIO ?? 3),
   minDataPoints: Number(process.env.MIN_OHLCV_POINTS ?? 120),
   requestDelayMs: Number(process.env.REQUEST_DELAY_MS ?? 200),
   jupiterQuoteAmount: Number(process.env.JUPITER_QUOTE_AMOUNT ?? 1000000),
@@ -295,6 +297,8 @@ async function main() {
 
       if (metrics.atrPct < CONFIG.minAtrPct5m14) continue;
       if (metrics.avgRangePct < CONFIG.minAvgRangePct5m24h) continue;
+      if (metrics.realizedVol < CONFIG.minRealizedVol5m) continue;
+      if ((pool.volume24hUsd / Math.max(pool.liquidityUsd, 1)) < CONFIG.minVolumeLiquidityRatio) continue;
 
       enriched.push({ ...pool, ...metrics });
     } catch (error) {
@@ -380,6 +384,8 @@ async function main() {
       maxFdvUsd: CONFIG.maxFdvUsd,
       minAtrPct5m14: CONFIG.minAtrPct5m14,
       minAvgRangePct5m24h: CONFIG.minAvgRangePct5m24h,
+      minRealizedVol5m: CONFIG.minRealizedVol5m,
+      minVolumeLiquidityRatio: CONFIG.minVolumeLiquidityRatio,
     },
     whitelist,
   };

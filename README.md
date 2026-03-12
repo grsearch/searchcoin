@@ -63,6 +63,8 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - `MIN_TX_COUNT_24H`（默认 `10000`）
 - `MIN_FDV_USD`（默认 `1000000`）
 - `MAX_FDV_USD`（默认 `8000000`）
+- `MIN_REALIZED_VOL_5M`（默认 `0.015`）
+- `MIN_VOLUME_LIQUIDITY_RATIO`（默认 `3`）
 - 其他：`GECKO_API_KEY`、`GECKO_AUTH_MODE`、`NETWORK`、`OUTPUT_PATH`、`BLACKLIST_MINTS`、`QUOTE_MINT`
 
 ## 主要环境变量（信号 / 周期）
@@ -119,3 +121,19 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - 新增“信号发送记录”看板（来自 `signal-events.jsonl`）
 
 你可以把该页面接入 OpenClaw 面板或反向代理到公网。
+
+
+## 5分钟高波动参数模板
+
+如果你发现选出来的币 5m 波动不够，可以把阈值再拉高：
+
+```bash
+TOP_N=20 \
+MIN_ATR_PCT_5M14=0.05 \
+MIN_AVG_RANGE_PCT_5M_24H=0.025 \
+MIN_REALIZED_VOL_5M=0.02 \
+MIN_VOLUME_LIQUIDITY_RATIO=4 \
+npm run build:whitelist
+```
+
+建议先看 Dashboard 里的 `Vol/Liq`、`ATR%`、`RV(5m)` 三列，再逐步调参。
