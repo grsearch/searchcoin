@@ -2,7 +2,7 @@
 
 本程序**不负责实际下单交易**。它负责：
 
-1. 每 6 小时扫描并发现适合交易的币
+1. 每 30 分钟扫描并发现适合交易的币
 2. 生成并更新白名单（默认保留前 40，可配）
 3. 监控 K 线并跑 RSI 信号策略（5m 主周期）
 4. 通过 webhook 发送买卖信号
@@ -18,7 +18,7 @@
 - 白名单输出：`whitelist.json`
 - 信号输出：基于 RSI 的 BUY/SELL webhook 消息（仅信号，不交易）
 - 开单条件：15m K线下 EMA9 > EMA20 才允许 BUY
-- 6 小时周期更新：退出白名单的币会优先发送 `SELL + EXIT_WHITELIST`
+- 30 分钟周期更新：退出白名单的币会优先发送 `SELL + EXIT_WHITELIST`
 
 ## CLI
 
@@ -47,7 +47,7 @@ npm run read:whitelist
 GECKO_API_KEY=your_key SIGNAL_AGGREGATE=5 TREND_AGGREGATE=15 WEBHOOK_URL=https://your-webhook.endpoint npm run run:signals
 ```
 
-- 每 6 小时完整周期（更新白名单 + 退出币优先发 SELL）：
+- 每 30 分钟完整周期（更新白名单 + 退出币优先发 SELL）：
 
 ```bash
 GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cycle
@@ -93,10 +93,10 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 
 ## OpenClaw 部署建议
 
-1. 每 6 小时运行一次完整周期：
+1. 每 30 分钟运行一次完整周期：
 
 ```bash
-0 */6 * * * cd /path/to/searchcoin && GECKO_API_KEY=xxx WEBHOOK_URL=https://xxx /usr/bin/env npm run run:cycle
+*/30 * * * * cd /path/to/searchcoin && GECKO_API_KEY=xxx WEBHOOK_URL=https://xxx /usr/bin/env npm run run:cycle
 ```
 
 2. 可选：更高频运行 RSI 监控（例如 5 分钟一次）
