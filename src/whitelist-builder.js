@@ -12,13 +12,13 @@ const CONFIG = {
   quoteMint: process.env.QUOTE_MINT ?? 'So11111111111111111111111111111111111111112',
   outputPath: process.env.OUTPUT_PATH ?? 'whitelist.json',
   topN: Number(process.env.TOP_N ?? 40),
-  minPoolAgeHours: Number(process.env.MIN_POOL_AGE_HOURS ?? 48),
-  maxPoolAgeHours: Number(process.env.MAX_POOL_AGE_HOURS ?? 8760),
-  minLiquidityUsd: Number(process.env.MIN_LIQUIDITY_USD ?? 80_000),
-  minVolume24hUsd: Number(process.env.MIN_VOLUME_24H_USD ?? 300_000),
-  minTxCount24h: Number(process.env.MIN_TX_COUNT_24H ?? 3_000),
-  minFdvUsd: Number(process.env.MIN_FDV_USD ?? 500_000),
-  maxFdvUsd: Number(process.env.MAX_FDV_USD ?? 5_000_000),
+  minPoolAgeHours: Number(process.env.MIN_POOL_AGE_HOURS ?? 0),
+  maxPoolAgeHours: Number(process.env.MAX_POOL_AGE_HOURS ?? Number.POSITIVE_INFINITY),
+  minLiquidityUsd: Number(process.env.MIN_LIQUIDITY_USD ?? 50_000),
+  minVolume24hUsd: Number(process.env.MIN_VOLUME_24H_USD ?? 100_000),
+  minTxCount24h: Number(process.env.MIN_TX_COUNT_24H ?? 1_000),
+  minFdvUsd: Number(process.env.MIN_FDV_USD ?? 0),
+  maxFdvUsd: Number(process.env.MAX_FDV_USD ?? Number.POSITIVE_INFINITY),
   minAtrPct5m14: Number(process.env.MIN_ATR_PCT_5M14 ?? 0.05),
   minAvgRangePct5m: Number(process.env.MIN_AVG_RANGE_5M ?? process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.025),
   minRsiSwing: Number(process.env.MIN_RSI_SWING ?? 28),
@@ -28,6 +28,11 @@ const CONFIG = {
   minAvgRange1m: Number(process.env.MIN_AVG_RANGE_1M ?? 0),
   rsiPeriod: Number(process.env.RSI_PERIOD ?? 14),
   filterDebug: (process.env.FILTER_DEBUG ?? 'false').toLowerCase() === 'true',
+  volScoreAtrCap: Number(process.env.VOL_SCORE_ATR_CAP ?? 0.10),
+  volScoreP90Cap: Number(process.env.VOL_SCORE_P90_CAP ?? 0.10),
+  volScoreRsiCap: Number(process.env.VOL_SCORE_RSI_CAP ?? 100),
+  volScoreReversalCap: Number(process.env.VOL_SCORE_REVERSAL_CAP ?? 150),
+  volScoreVolLiqCap: Number(process.env.VOL_SCORE_VOL_LIQ_CAP ?? 30),
   minDataPoints: Number(process.env.MIN_OHLCV_POINTS ?? 120),
   requestDelayMs: Number(process.env.REQUEST_DELAY_MS ?? 200),
   jupiterQuoteAmount: Number(process.env.JUPITER_QUOTE_AMOUNT ?? 1000000),
@@ -63,6 +68,12 @@ function increaseCounter(map, key) {
 function asRatio(value) {
   const n = asNumber(value, 0);
   return Math.abs(n) > 1.5 ? n / 100 : n;
+}
+
+function normalizeScorePart(value, cap) {
+  const safeCap = Math.max(asNumber(cap, 0), 1e-9);
+  const raw = asNumber(value, 0) / safeCap;
+  return Math.max(0, Math.min(1, raw));
 }
 
 function calcRsiSeries(closes, period) {
@@ -329,11 +340,9 @@ function getSoftPassCount(flags) {
 
 function getHardFilterFailReason(pool) {
   if (CONFIG.blacklist.has(pool.baseMint)) return 'blacklist';
-  if (pool.ageHours < CONFIG.minPoolAgeHours || pool.ageHours > CONFIG.maxPoolAgeHours) return 'age';
   if (pool.liquidityUsd < CONFIG.minLiquidityUsd) return 'liquidity';
   if (pool.volume24hUsd < CONFIG.minVolume24hUsd) return 'volume24h';
   if (pool.txCount24h < CONFIG.minTxCount24h) return 'txCount24h';
-  if (pool.fdvUsd < CONFIG.minFdvUsd || pool.fdvUsd > CONFIG.maxFdvUsd) return 'fdv';
   return null;
 }
 
@@ -473,26 +482,27 @@ async function main() {
     return;
   }
 
-  const atrRanks = percentileRanks(enriched.map((x) => x.atrPct));
-  const rangeRanks = percentileRanks(enriched.map((x) => x.avgRangePct));
-  const rsiRanks = percentileRanks(enriched.map((x) => x.rsiSwing));
-  const reversalRanks = percentileRanks(enriched.map((x) => x.reversals5m));
-  const p90RangeRanks = percentileRanks(enriched.map((x) => x.p90RangePct));
-  const volLiqRanks = percentileRanks(enriched.map((x) => x.volLiqRatio));
-  const wickRanks = percentileRanks(enriched.map((x) => x.avgWickRatio));
-
   const scored = enriched
-    .map((item, i) => {
-      const baseScore =
-        0.2 * rangeRanks[i]
-        + 0.2 * rsiRanks[i]
-        + 0.2 * reversalRanks[i]
-        + 0.15 * volLiqRanks[i]
-        + 0.15 * p90RangeRanks[i]
-        + 0.1 * atrRanks[i];
-      const softPassBoost = 0.02 * item.softPassCount;
-      const penalty = 0.12 * wickRanks[i] + 0.08 * (1 - item.bodyBarsRatio);
-      return { ...item, finalScore: baseScore + softPassBoost - penalty };
+    .map((item) => {
+      const atrNorm = normalizeScorePart(item.atrPct, CONFIG.volScoreAtrCap);
+      const p90Norm = normalizeScorePart(item.p90RangePct, CONFIG.volScoreP90Cap);
+      const rsiNorm = normalizeScorePart(item.rsiSwing, CONFIG.volScoreRsiCap);
+      const reversalNorm = normalizeScorePart(item.reversals5m, CONFIG.volScoreReversalCap);
+      const volLiqNorm = normalizeScorePart(item.volLiqRatio, CONFIG.volScoreVolLiqCap);
+
+      const volatilityScore =
+        0.30 * atrNorm
+        + 0.25 * p90Norm
+        + 0.20 * rsiNorm
+        + 0.15 * reversalNorm
+        + 0.10 * volLiqNorm;
+
+      return {
+        ...item,
+        volatilityScore,
+        scoreParts: { atrNorm, p90Norm, rsiNorm, reversalNorm, volLiqNorm },
+        finalScore: volatilityScore,
+      };
     })
     .sort((a, b) => b.finalScore - a.finalScore)
     .slice(0, CONFIG.topN);
@@ -530,6 +540,8 @@ async function main() {
       rsiSwing5m: Number(token.rsiSwing.toFixed(2)),
       reversals5m: token.reversals5m,
       volLiqRatio: Number(token.volLiqRatio.toFixed(3)),
+      volatilityScore: Number(token.volatilityScore.toFixed(6)),
+      scoreParts: token.scoreParts,
       softPassCount: token.softPassCount,
       softMetricFlags: token.softMetricFlags,
       priceChange24hPct: Number((token.priceChange24h * 100).toFixed(3)),
@@ -563,7 +575,13 @@ async function main() {
       minVolumeLiquidityRatio: CONFIG.minVolumeLiquidityRatio,
       minP90RangePct5m: CONFIG.minP90RangePct5m,
       minAvgRange1m: CONFIG.minAvgRange1m,
-      metricFilterMode: 'soft_ranked',
+      metricFilterMode: 'soft_ranked_v3',
+      scoreFormula: '0.30*ATR + 0.25*P90 + 0.20*RSI_SWING + 0.15*REVERSALS + 0.10*VOL_LIQ (normalized)',
+      volScoreAtrCap: CONFIG.volScoreAtrCap,
+      volScoreP90Cap: CONFIG.volScoreP90Cap,
+      volScoreRsiCap: CONFIG.volScoreRsiCap,
+      volScoreReversalCap: CONFIG.volScoreReversalCap,
+      volScoreVolLiqCap: CONFIG.volScoreVolLiqCap,
     },
     debug: CONFIG.filterDebug ? { hardRejects, metricRejects } : undefined,
     whitelist,

@@ -76,7 +76,7 @@ async function main() {
   const prevWhitelist = await readWhitelist(CONFIG.whitelistPath);
   const prevMap = mapByToken(prevWhitelist);
 
-  // 每30分钟运行一次此脚本：先更新白名单。
+  // 每15分钟运行一次此脚本：先更新白名单。
   await runBuildWhitelist();
 
   const nextWhitelist = await readWhitelist(CONFIG.whitelistPath);
@@ -90,7 +90,7 @@ async function main() {
     const payload = {
       signal: 'SELL',
       subtype: 'EXIT_WHITELIST',
-      reason: 'Token removed from whitelist on 30m refresh',
+      reason: 'Token removed from whitelist on 15m refresh',
       tokenAddress: token.tokenAddress,
       symbol: token.symbol ?? 'UNKNOWN',
       poolAddress: token.primaryPool ?? null,
@@ -110,7 +110,7 @@ async function main() {
 
   const summary = {
     generatedAt: new Date().toISOString(),
-    mode: 'whitelist_30m_cycle',
+    mode: 'whitelist_15m_cycle',
     previousCount: prevWhitelist.length,
     currentCount: nextWhitelist.length,
     enteredCount: nextWhitelist.filter((item) => !prevMap.has(item.tokenAddress)).length,

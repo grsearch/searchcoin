@@ -2,7 +2,7 @@
 
 本程序**不负责实际下单交易**。它负责：
 
-1. 每 30 分钟扫描并发现适合交易的币
+1. 每 15 分钟扫描并发现适合交易的币
 2. 生成并更新白名单（默认保留前 40，可配）
 3. 监控 K 线并跑 RSI 信号策略（5m 主周期）
 4. 通过 webhook 发送买卖信号
@@ -13,12 +13,12 @@
 
 - 数据源：CoinGecko Pro Onchain（GeckoTerminal 数据）
 - 候选来源：`trending_pools`、`new_pools`、`megafilter`
-- 硬过滤：池龄、流动性、24h 成交额、24h 交易笔数、FDV 区间、黑名单
+- 硬过滤：流动性、24h 成交额、24h 交易笔数、黑名单（其余交给评分排序）
 - 白名单规则：默认保留前 `40`（`TOP_N` 默认值，可调整）
 - 白名单输出：`whitelist.json`
 - 信号输出：基于 RSI 的 BUY/SELL webhook 消息（仅信号，不交易）
 - 开单条件：15m K线下 EMA9 > EMA20 才允许 BUY
-- 30 分钟周期更新：退出白名单的币会优先发送 `SELL + EXIT_WHITELIST`
+- 15 分钟周期更新：退出白名单的币会优先发送 `SELL + EXIT_WHITELIST`
 
 ## CLI
 
@@ -47,7 +47,7 @@ npm run read:whitelist
 GECKO_API_KEY=your_key SIGNAL_AGGREGATE=5 TREND_AGGREGATE=15 WEBHOOK_URL=https://your-webhook.endpoint npm run run:signals
 ```
 
-- 每 30 分钟完整周期（更新白名单 + 退出币优先发 SELL）：
+- 每 15 分钟完整周期（更新白名单 + 退出币优先发 SELL）：
 
 ```bash
 GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cycle
@@ -56,13 +56,13 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 ## 主要环境变量（白名单构建）
 
 - `TOP_N`（默认 `40`）
-- `MIN_POOL_AGE_HOURS`（默认 `48`）
-- `MAX_POOL_AGE_HOURS`（默认 `8760`，约 1 年）
-- `MIN_LIQUIDITY_USD`（默认 `80000`）
-- `MIN_VOLUME_24H_USD`（默认 `300000`）
-- `MIN_TX_COUNT_24H`（默认 `3000`）
-- `MIN_FDV_USD`（默认 `500000`）
-- `MAX_FDV_USD`（默认 `5000000`）
+- `MIN_POOL_AGE_HOURS`（默认 `0`，默认不启用池龄过滤）
+- `MAX_POOL_AGE_HOURS`（默认 `Infinity`，默认不启用池龄上限）
+- `MIN_LIQUIDITY_USD`（默认 `50000`）
+- `MIN_VOLUME_24H_USD`（默认 `100000`）
+- `MIN_TX_COUNT_24H`（默认 `1000`）
+- `MIN_FDV_USD`（默认 `0`，默认不启用）
+- `MAX_FDV_USD`（默认 `Infinity`，默认不启用）
 - `MIN_VOLUME_LIQUIDITY_RATIO`（默认 `3`）
 - `MIN_AVG_RANGE_5M`（默认 `0.025`）
 - `MIN_RSI_SWING`（默认 `28`）
@@ -94,10 +94,10 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 
 ## OpenClaw 部署建议
 
-1. 每 30 分钟运行一次完整周期：
+1. 每 15 分钟运行一次完整周期：
 
 ```bash
-*/30 * * * * cd /path/to/searchcoin && GECKO_API_KEY=xxx WEBHOOK_URL=https://xxx /usr/bin/env npm run run:cycle
+*/15 * * * * cd /path/to/searchcoin && GECKO_API_KEY=xxx WEBHOOK_URL=https://xxx /usr/bin/env npm run run:cycle
 ```
 
 2. 可选：更高频运行 RSI 监控（例如 5 分钟一次）
@@ -128,6 +128,34 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 
 你可以把该页面接入 OpenClaw 面板或反向代理到公网。
 
+
+
+
+## Volatility Score v3（当前默认）
+
+白名单采用“**基础过滤 + 评分排序**”模型：
+
+- 基础过滤：`MIN_LIQUIDITY_USD`、`MIN_VOLUME_24H_USD`、`MIN_TX_COUNT_24H`（+ 黑名单）
+- 评分排序：按 `finalScore` 取前 `TOP_N`
+
+评分公式：
+
+```text
+score =
+0.30 * ATR
++ 0.25 * P90_RANGE
++ 0.20 * RSI_SWING
++ 0.15 * REVERSALS
++ 0.10 * VOL_LIQ
+```
+
+其中每项会先归一化到 `[0,1]`（可通过以下参数调节上限）：
+
+- `VOL_SCORE_ATR_CAP`（默认 `0.10`，即 ATR%=10%）
+- `VOL_SCORE_P90_CAP`（默认 `0.10`，即 P90%=10%）
+- `VOL_SCORE_RSI_CAP`（默认 `100`）
+- `VOL_SCORE_REVERSAL_CAP`（默认 `150`）
+- `VOL_SCORE_VOL_LIQ_CAP`（默认 `30`）
 
 ## 5分钟高波动参数模板
 
