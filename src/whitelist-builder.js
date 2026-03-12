@@ -11,7 +11,7 @@ const CONFIG = {
   network: process.env.NETWORK ?? 'solana',
   quoteMint: process.env.QUOTE_MINT ?? 'So11111111111111111111111111111111111111112',
   outputPath: process.env.OUTPUT_PATH ?? 'whitelist.json',
-  topN: Number(process.env.TOP_N ?? 30),
+  topN: Number(process.env.TOP_N ?? 40),
   minPoolAgeHours: Number(process.env.MIN_POOL_AGE_HOURS ?? 48),
   maxPoolAgeHours: Number(process.env.MAX_POOL_AGE_HOURS ?? 8760),
   minLiquidityUsd: Number(process.env.MIN_LIQUIDITY_USD ?? 80_000),
@@ -23,10 +23,8 @@ const CONFIG = {
   minAvgRangePct5m: Number(process.env.MIN_AVG_RANGE_5M ?? process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.035),
   minRsiSwing: Number(process.env.MIN_RSI_SWING ?? 35),
   minReversals5m: Number(process.env.MIN_REVERSALS_5M ?? 12),
-  minPriceChange24h: Number(process.env.MIN_PRICE_CHANGE_24H ?? 0.1),
   minVolumeLiquidityRatio: Number(process.env.MIN_VOLUME_LIQUIDITY_RATIO ?? 4),
   minP90RangePct5m: Number(process.env.MIN_P90_RANGE_PCT_5M ?? 0.035),
-  minBodyBarsRatio: Number(process.env.MIN_BODY_BARS_RATIO ?? 0.45),
   rsiPeriod: Number(process.env.RSI_PERIOD ?? 14),
   minDataPoints: Number(process.env.MIN_OHLCV_POINTS ?? 120),
   requestDelayMs: Number(process.env.REQUEST_DELAY_MS ?? 200),
@@ -310,7 +308,6 @@ function passHardFilters(pool) {
   if (pool.liquidityUsd < CONFIG.minLiquidityUsd) return false;
   if (pool.volume24hUsd < CONFIG.minVolume24hUsd) return false;
   if (pool.txCount24h < CONFIG.minTxCount24h) return false;
-  if (Math.abs(pool.priceChange24h) < CONFIG.minPriceChange24h) return false;
   if (pool.fdvUsd < CONFIG.minFdvUsd || pool.fdvUsd > CONFIG.maxFdvUsd) return false;
   return true;
 }
@@ -373,7 +370,6 @@ async function main() {
       if (metrics.reversals5m < CONFIG.minReversals5m) continue;
       if ((pool.volume24hUsd / Math.max(pool.liquidityUsd, 1)) < CONFIG.minVolumeLiquidityRatio) continue;
       if (metrics.p90RangePct < CONFIG.minP90RangePct5m) continue;
-      if (metrics.bodyBarsRatio < CONFIG.minBodyBarsRatio) continue;
 
       enriched.push({ ...pool, ...metrics });
     } catch (error) {
@@ -459,7 +455,6 @@ async function main() {
       minLiquidityUsd: CONFIG.minLiquidityUsd,
       minVolume24hUsd: CONFIG.minVolume24hUsd,
       minTxCount24h: CONFIG.minTxCount24h,
-      minPriceChange24h: CONFIG.minPriceChange24h,
       minFdvUsd: CONFIG.minFdvUsd,
       maxFdvUsd: CONFIG.maxFdvUsd,
       minAtrPct5m14: CONFIG.minAtrPct5m14,
@@ -468,7 +463,6 @@ async function main() {
       minReversals5m: CONFIG.minReversals5m,
       minVolumeLiquidityRatio: CONFIG.minVolumeLiquidityRatio,
       minP90RangePct5m: CONFIG.minP90RangePct5m,
-      minBodyBarsRatio: CONFIG.minBodyBarsRatio,
     },
     whitelist,
   };
