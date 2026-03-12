@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SearchCoin Dashboard</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; background: #0b1020; color: #e8eeff; }
+      .wrap { max-width: 1180px; margin: 0 auto; padding: 24px; }
+      h1 { margin: 0 0 10px; }
+      h2 { margin: 24px 0 10px; font-size: 18px; }
+      a { color: #7db4ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .cards { display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; margin: 16px 0 24px; }
+      .card { background:#151c33; border:1px solid #2a3560; border-radius: 10px; padding: 14px; }
+      .label { font-size: 12px; color: #9db0ff; }
+      .value { font-size: 22px; font-weight: 700; margin-top: 6px; }
+      table { width:100%; border-collapse: collapse; background:#121930; border-radius: 10px; overflow: hidden; }
+      th, td { padding: 10px; border-bottom: 1px solid #263156; text-align: left; font-size: 13px; }
+      th { color:#9db0ff; }
+      .ok { color: #58dd9d; }
+      .buy { color: #5bf59f; }
+      .sell { color: #ff7a9a; }
+      .muted { color: #95a0c6; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      @media (max-width: 1000px){ .cards{grid-template-columns: repeat(2,1fr);} }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>SearchCoin Dashboard</h1>
+      <div class="muted">白名单发现与信号系统（不执行交易）</div>
+
+      <div class="cards">
+        <div class="card"><div class="label">Whitelist Count</div><div class="value" id="count">-</div></div>
+        <div class="card"><div class="label">Tradable Count</div><div class="value" id="tradable">-</div></div>
+        <div class="card"><div class="label">Top N</div><div class="value" id="topn">-</div></div>
+        <div class="card"><div class="label">Signal Records</div><div class="value" id="signalCount">-</div></div>
+        <div class="card"><div class="label">Generated At</div><div class="value" id="gen" style="font-size:14px">-</div></div>
+      </div>
+
+      <h2>Whitelist</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th><th>Token Address (GMGN)</th><th>Score</th><th>Liquidity</th><th>Volume 24h</th><th>Vol/Liq</th><th>ATR%</th><th>P90 Range%</th><th>RSI Swing</th><th>Reversals</th><th>24h Change%</th><th>Tradable</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+
+      <h2>信号发送记录</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th><th>Type</th><th>Signal</th><th>Symbol</th><th>Token</th><th>Reason</th><th>Webhook</th>
+          </tr>
+        </thead>
+        <tbody id="signalRows"></tbody>
+      </table>
+    </div>
+
+    <script>
+      function gmgnLink(tokenAddress) {
+        return `https://gmgn.ai/sol/token/${tokenAddress}`;
+      }
+
+      async function loadWhitelist() {
+        const res = await fetch('/api/whitelist');
+        const data = await res.json();
+        document.getElementById('count').textContent = data.count;
+        document.getElementById('tradable').textContent = data.tradableCount;
+        document.getElementById('topn').textContent = data.config?.topN ?? '-';
+        document.getElementById('gen').textContent = data.generatedAt ?? '-';
+
+        const rows = document.getElementById('rows');
+        rows.innerHTML = '';
+        for (const t of data.whitelist || []) {
+          const symbol = t.symbol || 'N/A';
+          const token = t.tokenAddress || '';
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${symbol}</td>
+            <td class="mono"><a href="${gmgnLink(token)}" target="_blank" rel="noopener noreferrer" title="${token}">${token}</a></td>
+            <td>${t.finalScore ?? ''}</td>
+            <td>${t.liquidityUsd ?? ''}</td>
+            <td>${t.volume24hUsd ?? ''}</td>
+            <td>${(((t.volume24hUsd||0)/Math.max((t.liquidityUsd||1),1)).toFixed ? ((t.volume24hUsd||0)/Math.max((t.liquidityUsd||1),1)).toFixed(2) : "")}</td>
+            <td>${t.atrPct5m14 ?? ""}</td>
+            <td>${t.p90RangePct5m ?? ""}</td>
+            <td>${t.rsiSwing5m ?? ""}</td>
+            <td>${t.reversals5m ?? ""}</td>
+            <td>${t.priceChange24hPct ?? ""}</td>
+            <td class="${t.tradable ? "ok":""}">${t.tradable ? "YES":"NO"}</td>
+          `;
+          rows.appendChild(tr);
+        }
+      }
+
+      async function loadSignals() {
+        const res = await fetch('/api/signals');
+        const data = await res.json();
+        document.getElementById('signalCount').textContent = data.count ?? 0;
+
+        const rows = document.getElementById('signalRows');
+        rows.innerHTML = '';
+        for (const s of data.events || []) {
+          const token = s.tokenAddress || '';
+          const signalCls = (s.signal || '').toUpperCase() === 'BUY' ? 'buy' : ((s.signal || '').toUpperCase() === 'SELL' ? 'sell' : '');
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${s.loggedAt || s.at || '-'}</td>
+            <td>${s.eventType || '-'}</td>
+            <td class="${signalCls}">${s.signal || '-'}</td>
+            <td>${s.symbol || 'N/A'}</td>
+            <td class="mono">${token ? `<a href="${gmgnLink(token)}" target="_blank" rel="noopener noreferrer">${token}</a>` : '-'}</td>
+            <td>${s.reason || '-'}</td>
+            <td>${s.webhook?.status || '-'}</td>
+          `;
+          rows.appendChild(tr);
+        }
+      }
+
+      async function loadAll() {
+        await Promise.all([loadWhitelist(), loadSignals()]);
+      }
+
+      loadAll();
+      setInterval(loadAll, 30000);
+    </script>
+  </body>
+</html>
