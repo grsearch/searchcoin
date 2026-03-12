@@ -19,10 +19,12 @@ const CONFIG = {
   minTxCount24h: Number(process.env.MIN_TX_COUNT_24H ?? 10_000),
   minFdvUsd: Number(process.env.MIN_FDV_USD ?? 1_000_000),
   maxFdvUsd: Number(process.env.MAX_FDV_USD ?? 8_000_000),
-  minAtrPct5m14: Number(process.env.MIN_ATR_PCT_5M14 ?? 0.04),
-  minAvgRangePct5m24h: Number(process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.02),
-  minRealizedVol5m: Number(process.env.MIN_REALIZED_VOL_5M ?? 0.015),
-  minVolumeLiquidityRatio: Number(process.env.MIN_VOLUME_LIQUIDITY_RATIO ?? 3),
+  minAtrPct5m14: Number(process.env.MIN_ATR_PCT_5M14 ?? 0.05),
+  minAvgRangePct5m24h: Number(process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.025),
+  minRealizedVol5m: Number(process.env.MIN_REALIZED_VOL_5M ?? 0.02),
+  minVolumeLiquidityRatio: Number(process.env.MIN_VOLUME_LIQUIDITY_RATIO ?? 4),
+  minP90RangePct5m: Number(process.env.MIN_P90_RANGE_PCT_5M ?? 0.035),
+  minBodyBarsRatio: Number(process.env.MIN_BODY_BARS_RATIO ?? 0.45),
   minDataPoints: Number(process.env.MIN_OHLCV_POINTS ?? 120),
   requestDelayMs: Number(process.env.REQUEST_DELAY_MS ?? 200),
   jupiterQuoteAmount: Number(process.env.JUPITER_QUOTE_AMOUNT ?? 1000000),
@@ -164,10 +166,12 @@ function computeOHLCVMetrics(candles) {
   const realizedVol = Math.sqrt(variance);
 
   const avgRangePct = amplitudes.reduce((s, x) => s + x, 0) / amplitudes.length;
+  const sortedAmp = [...amplitudes].sort((a, b) => a - b);
+  const p90RangePct = sortedAmp[Math.floor((sortedAmp.length - 1) * 0.9)] ?? 0;
   const avgWickRatio = wickRatios.reduce((s, x) => s + x, 0) / wickRatios.length;
   const bodyBarsRatio = wickRatios.filter((w) => w < 0.6).length / wickRatios.length;
 
-  return { atrPct, realizedVol, avgRangePct, avgWickRatio, bodyBarsRatio };
+  return { atrPct, realizedVol, avgRangePct, p90RangePct, avgWickRatio, bodyBarsRatio };
 }
 
 async function fetchJson(url) {
@@ -305,6 +309,8 @@ async function main() {
       if (metrics.avgRangePct < CONFIG.minAvgRangePct5m24h) continue;
       if (metrics.realizedVol < CONFIG.minRealizedVol5m) continue;
       if ((pool.volume24hUsd / Math.max(pool.liquidityUsd, 1)) < CONFIG.minVolumeLiquidityRatio) continue;
+      if (metrics.p90RangePct < CONFIG.minP90RangePct5m) continue;
+      if (metrics.bodyBarsRatio < CONFIG.minBodyBarsRatio) continue;
 
       enriched.push({ ...pool, ...metrics });
     } catch (error) {
@@ -330,7 +336,7 @@ async function main() {
 
   const scored = enriched
     .map((item, i) => {
-      const baseScore = 0.35 * atrRanks[i] + 0.3 * rvRanks[i] + 0.2 * rangeRanks[i] + 0.15 * volLiqRanks[i];
+      const baseScore = 0.4 * atrRanks[i] + 0.35 * rvRanks[i] + 0.2 * rangeRanks[i] + 0.05 * volLiqRanks[i];
       const penalty = 0.15 * wickRanks[i] + 0.1 * (1 - item.bodyBarsRatio);
       return { ...item, finalScore: baseScore - penalty };
     })
@@ -365,6 +371,7 @@ async function main() {
       atrPct5m14: Number((token.atrPct * 100).toFixed(3)),
       avgRangePct5m24h: Number((token.avgRangePct * 100).toFixed(3)),
       realizedVol5m: Number(token.realizedVol.toFixed(6)),
+      p90RangePct5m: Number((token.p90RangePct * 100).toFixed(3)),
       recommendedTimeframe: recommendTimeframe(token.atrPct, token.realizedVol),
       tradable: true,
     });
@@ -392,6 +399,8 @@ async function main() {
       minAvgRangePct5m24h: CONFIG.minAvgRangePct5m24h,
       minRealizedVol5m: CONFIG.minRealizedVol5m,
       minVolumeLiquidityRatio: CONFIG.minVolumeLiquidityRatio,
+      minP90RangePct5m: CONFIG.minP90RangePct5m,
+      minBodyBarsRatio: CONFIG.minBodyBarsRatio,
     },
     whitelist,
   };

@@ -63,8 +63,10 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - `MIN_TX_COUNT_24H`（默认 `10000`）
 - `MIN_FDV_USD`（默认 `1000000`）
 - `MAX_FDV_USD`（默认 `8000000`）
-- `MIN_REALIZED_VOL_5M`（默认 `0.015`）
-- `MIN_VOLUME_LIQUIDITY_RATIO`（默认 `3`）
+- `MIN_REALIZED_VOL_5M`（默认 `0.02`）
+- `MIN_VOLUME_LIQUIDITY_RATIO`（默认 `4`）
+- `MIN_P90_RANGE_PCT_5M`（默认 `0.035`）
+- `MIN_BODY_BARS_RATIO`（默认 `0.45`）
 - 其他：`GECKO_API_KEY`、`GECKO_AUTH_MODE`、`NETWORK`、`OUTPUT_PATH`、`BLACKLIST_MINTS`、`QUOTE_MINT`
 
 ## 主要环境变量（信号 / 周期）
@@ -129,11 +131,13 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 
 ```bash
 TOP_N=20 \
-MIN_ATR_PCT_5M14=0.05 \
-MIN_AVG_RANGE_PCT_5M_24H=0.025 \
-MIN_REALIZED_VOL_5M=0.02 \
-MIN_VOLUME_LIQUIDITY_RATIO=4 \
+MIN_ATR_PCT_5M14=0.06 \
+MIN_AVG_RANGE_PCT_5M_24H=0.03 \
+MIN_REALIZED_VOL_5M=0.025 \
+MIN_VOLUME_LIQUIDITY_RATIO=5 \
+MIN_P90_RANGE_PCT_5M=0.045 \
+MIN_BODY_BARS_RATIO=0.5 \
 npm run build:whitelist
 ```
 
-建议先看 Dashboard 里的 `Vol/Liq`、`ATR%`、`RV(5m)` 三列，再逐步调参。
+建议先看 Dashboard 里的 `Vol/Liq`、`ATR%`、`RV(5m)`、`P90 Range%` 四列，再逐步调参。

@@ -43,7 +43,7 @@
       <table>
         <thead>
           <tr>
-            <th>Symbol</th><th>Token Address (GMGN)</th><th>Score</th><th>Liquidity</th><th>Volume 24h</th><th>Vol/Liq</th><th>ATR%</th><th>RV(5m)</th><th>Tradable</th>
+            <th>Symbol</th><th>Token Address (GMGN)</th><th>Score</th><th>Liquidity</th><th>Volume 24h</th><th>Vol/Liq</th><th>ATR%</th><th>RV(5m)</th><th>P90 Range%</th><th>Tradable</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -88,6 +88,7 @@
             <td>${(((t.volume24hUsd||0)/Math.max((t.liquidityUsd||1),1)).toFixed ? ((t.volume24hUsd||0)/Math.max((t.liquidityUsd||1),1)).toFixed(2) : "")}</td>
             <td>${t.atrPct5m14 ?? ""}</td>
             <td>${t.realizedVol5m ?? ""}</td>
+            <td>${t.p90RangePct5m ?? ""}</td>
             <td class="${t.tradable ? "ok":""}">${t.tradable ? "YES":"NO"}</td>
           `;
           rows.appendChild(tr);
