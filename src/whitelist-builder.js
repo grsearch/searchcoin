@@ -76,6 +76,12 @@ function normalizeTokenId(tokenId) {
   return tokenId;
 }
 
+function parseAddressFromTokenItem(item) {
+  const attrs = item?.attributes ?? {};
+  const raw = attrs.address ?? attrs.token_address ?? item?.id ?? '';
+  return normalizeTokenId(raw).toLowerCase();
+}
+
 async function fetchTokenInfosMulti(addresses) {
   const uniq = [...new Set(addresses.map((x) => (x || '').trim()).filter(Boolean))];
   if (!uniq.length) return new Map();
@@ -87,7 +93,7 @@ async function fetchTokenInfosMulti(addresses) {
     const out = new Map();
     for (const item of items) {
       const attrs = item?.attributes ?? {};
-      const address = normalizeTokenId(attrs.address ?? attrs.token_address ?? item?.id ?? '').toLowerCase();
+      const address = parseAddressFromTokenItem(item);
       if (!address) continue;
       out.set(address, {
         symbol: attrs.symbol ?? '',

@@ -108,7 +108,7 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 为避免 symbol 为空，程序会优先通过 CoinGecko Onchain Token Info 接口按合约地址补全：
 
 - `/onchain/networks/{network}/tokens/multi/{addresses}`
-- `/onchain/networks/{network}/tokens/{address}/info`（兜底）
+- `/onchain/networks/{network}/tokens/{address}/info`（multi 未命中时逐个兜底）
 
 ## Dashboard
 

@@ -40,15 +40,40 @@ async function fetchTokenSymbols(addresses) {
   const uniq = [...new Set(addresses.map((x) => (x || '').trim()).filter(Boolean))];
   if (!uniq.length) return new Map();
   const out = new Map();
+
+  const parseAddress = (item) => {
+    const attrs = item?.attributes ?? {};
+    const raw = attrs.address ?? attrs.token_address ?? item?.id ?? '';
+    if (!raw) return '';
+    return raw.includes('_') ? raw.split('_').slice(1).join('_').toLowerCase() : raw.toLowerCase();
+  };
+
+  const fetchOne = async (address) => {
+    const url = `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/tokens/${address}/info`;
+    try {
+      const json = await fetchGeckoJson(url);
+      const symbol = json?.data?.attributes?.symbol ?? '';
+      if (symbol) out.set(address.toLowerCase(), symbol);
+    } catch {
+      // ignore
+    }
+  };
+
   try {
     const url = `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/tokens/multi/${uniq.join(',')}`;
     const json = await fetchGeckoJson(url);
     for (const item of json?.data ?? []) {
       const attrs = item?.attributes ?? {};
-      const addr = (attrs.address ?? '').toLowerCase();
+      const addr = parseAddress(item);
       if (addr) out.set(addr, attrs.symbol ?? '');
     }
   } catch {}
+
+  const unresolved = uniq.filter((address) => !out.get(address.toLowerCase()));
+  for (const address of unresolved) {
+    await fetchOne(address);
+  }
+
   return out;
 }
 
