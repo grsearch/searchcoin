@@ -8,6 +8,8 @@ const CONFIG = {
   port: Number(process.env.DASHBOARD_PORT ?? 4173),
   host: process.env.DASHBOARD_HOST ?? '0.0.0.0',
   whitelistPath: process.env.WHITELIST_PATH ?? 'whitelist.json',
+  signalLogPath: process.env.SIGNAL_LOG_PATH ?? 'signal-events.jsonl',
+  signalLogLimit: Number(process.env.SIGNAL_LOG_LIMIT ?? 200),
   publicDir: path.resolve(process.cwd(), 'public'),
 };
 
@@ -32,6 +34,31 @@ async function readWhitelist() {
     };
   } catch {
     return { generatedAt: null, config: {}, count: 0, tradableCount: 0, whitelist: [] };
+  }
+}
+
+async function readSignalEvents() {
+  try {
+    const raw = await fs.readFile(CONFIG.signalLogPath, 'utf8');
+    const lines = raw.split('\n').map((x) => x.trim()).filter(Boolean);
+    const recent = lines.slice(-CONFIG.signalLogLimit);
+    const events = recent
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .reverse();
+
+    return {
+      count: events.length,
+      events,
+    };
+  } catch {
+    return { count: 0, events: [] };
   }
 }
 
@@ -66,6 +93,13 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/whitelist') {
     const data = await readWhitelist();
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(data));
+    return;
+  }
+
+  if (url.pathname === '/api/signals') {
+    const data = await readSignalEvents();
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(data));
     return;

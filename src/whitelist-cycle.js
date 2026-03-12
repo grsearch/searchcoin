@@ -9,6 +9,7 @@ const CONFIG = {
   webhookAuthHeader: process.env.WEBHOOK_AUTH_HEADER ?? '',
   webhookAuthToken: process.env.WEBHOOK_AUTH_TOKEN ?? '',
   dryRun: (process.env.DRY_RUN ?? 'false').toLowerCase() === 'true',
+  signalLogPath: process.env.SIGNAL_LOG_PATH ?? 'signal-events.jsonl',
 };
 
 async function readWhitelist(path) {
@@ -35,6 +36,12 @@ function runBuildWhitelist() {
       else reject(new Error(`whitelist-builder exited with code ${code}`));
     });
   });
+}
+
+
+async function appendSignalEvent(event) {
+  const line = `${JSON.stringify(event)}\n`;
+  await fs.appendFile(CONFIG.signalLogPath, line, 'utf8');
 }
 
 async function sendWebhook(payload) {
@@ -92,7 +99,13 @@ async function main() {
     };
 
     const webhook = await sendWebhook(payload);
-    exitSignals.push({ ...payload, webhook });
+    const enriched = { ...payload, webhook };
+    exitSignals.push(enriched);
+    await appendSignalEvent({
+      eventType: 'EXIT_WHITELIST',
+      ...enriched,
+      loggedAt: new Date().toISOString(),
+    });
   }
 
   const summary = {

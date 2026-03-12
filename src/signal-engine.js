@@ -25,6 +25,7 @@ const CONFIG = {
   webhookAuthHeader: process.env.WEBHOOK_AUTH_HEADER ?? '',
   webhookAuthToken: process.env.WEBHOOK_AUTH_TOKEN ?? '',
   dryRun: (process.env.DRY_RUN ?? 'false').toLowerCase() === 'true',
+  signalLogPath: process.env.SIGNAL_LOG_PATH ?? 'signal-events.jsonl',
 };
 
 function safeNumber(v, fallback = 0) {
@@ -166,6 +167,12 @@ function buildSignal(token, previousRsi, currentRsi, closePrice, trend) {
   return null;
 }
 
+
+async function appendSignalEvent(event) {
+  const line = `${JSON.stringify(event)}\n`;
+  await fs.appendFile(CONFIG.signalLogPath, line, 'utf8');
+}
+
 async function sendWebhook(signalPayload) {
   if (!CONFIG.webhookUrl) return { sent: false, status: 'skipped_no_webhook' };
   if (CONFIG.dryRun) return { sent: false, status: 'dry_run' };
@@ -208,7 +215,13 @@ async function main() {
       if (!signal) continue;
 
       const webhookResult = await sendWebhook(signal);
-      signals.push({ ...signal, webhook: webhookResult });
+      const enriched = { ...signal, webhook: webhookResult };
+      signals.push(enriched);
+      await appendSignalEvent({
+        eventType: 'STRATEGY_SIGNAL',
+        ...enriched,
+        loggedAt: new Date().toISOString(),
+      });
     } catch (error) {
       console.warn(`[warn] token ${token.symbol ?? token.tokenAddress} signal check failed: ${error.message}`);
     }

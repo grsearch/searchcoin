@@ -82,6 +82,7 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - `WEBHOOK_URL`（买卖信号接收地址）
 - `WEBHOOK_AUTH_HEADER` / `WEBHOOK_AUTH_TOKEN`（可选 webhook 鉴权）
 - `DRY_RUN=true`（只输出信号，不发送 webhook）
+- `SIGNAL_LOG_PATH`（默认 `signal-events.jsonl`，记录所有信号发送结果）
 
 ## OpenClaw 部署建议
 
@@ -107,5 +108,7 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - 页面地址：`/`
 - API：`/api/whitelist`、`/api/health`
 - 展示内容：白名单数量、可交易数量、TopN、生成时间、币种列表
+- 合约地址可点击并跳转 GMGN（`https://gmgn.ai/sol/token/<token>`）
+- 新增“信号发送记录”看板（来自 `signal-events.jsonl`）
 
 你可以把该页面接入 OpenClaw 面板或反向代理到公网。
