@@ -61,8 +61,8 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - `MIN_LIQUIDITY_USD`（默认 `100000`）
 - `MIN_VOLUME_24H_USD`（默认 `500000`）
 - `MIN_TX_COUNT_24H`（默认 `10000`）
-- `MIN_FDV_USD`（默认 `1000000`）
-- `MAX_FDV_USD`（默认 `8000000`）
+- `MIN_FDV_USD`（默认 `500000`）
+- `MAX_FDV_USD`（默认 `5000000`）
 - `MIN_REALIZED_VOL_5M`（默认 `0.02`）
 - `MIN_VOLUME_LIQUIDITY_RATIO`（默认 `4`）
 - `MIN_P90_RANGE_PCT_5M`（默认 `0.035`）
