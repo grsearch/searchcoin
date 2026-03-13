@@ -49,6 +49,17 @@
         <div class="card"><div class="label">BUY / SELL Signals</div><div class="value" id="pnlSignalCount">-</div></div>
       </div>
 
+
+      <h2>单个代币盈亏（All Time / 24h）</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th><th>Token</th><th>BUY</th><th>SELL</th><th>All Time PnL (SOL)</th><th>24h Backtest PnL (SOL)</th><th>Open Qty</th>
+          </tr>
+        </thead>
+        <tbody id="tokenPnlRows"></tbody>
+      </table>
+
       <h2>Whitelist</h2>
       <table>
         <thead>
@@ -111,6 +122,43 @@
         return `${sign}${n.toFixed(4)} SOL`;
       }
 
+
+      function renderTokenPnlRows(allTimeTokens, last24hTokens) {
+        const rows = document.getElementById('tokenPnlRows');
+        rows.innerHTML = '';
+
+        const byToken24h = new Map((last24hTokens || []).map((x) => [x.tokenAddress, x]));
+        const merged = (allTimeTokens || []).map((item) => {
+          const h24 = byToken24h.get(item.tokenAddress) || {};
+          return {
+            ...item,
+            pnl24h: Number(h24.totalPnlSol ?? 0),
+          };
+        }).sort((a, b) => b.totalPnlSol - a.totalPnlSol);
+
+        if (!merged.length) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td colspan="7" class="muted">暂无信号，暂无单币盈亏数据。</td>';
+          rows.appendChild(tr);
+          return;
+        }
+
+        for (const t of merged) {
+          const token = t.tokenAddress || '';
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${t.symbol || 'N/A'}</td>
+            <td class="mono">${token ? `<a href="${gmgnLink(token)}" target="_blank" rel="noopener noreferrer">${token}</a>` : '-'}</td>
+            <td>${t.buyCount ?? 0}</td>
+            <td>${t.sellCount ?? 0}</td>
+            <td>${formatSolPnl(t.totalPnlSol)}</td>
+            <td>${formatSolPnl(t.pnl24h)}</td>
+            <td>${t.openQty ?? 0}</td>
+          `;
+          rows.appendChild(tr);
+        }
+      }
+
       async function loadPnl() {
         try {
           const res = await fetch('/api/pnl');
@@ -124,12 +172,15 @@
           document.getElementById('pnlTotalSection').textContent = formatSolPnl(total);
           document.getElementById('pnl24hSection').textContent = formatSolPnl(backtest24h);
           document.getElementById('pnlSignalCount').textContent = String(signalCount);
+          renderTokenPnlRows(data?.allTime?.perToken || [], data?.last24h?.perToken || []);
         } catch (error) {
           document.getElementById('pnlTotal').textContent = 'ERR';
           document.getElementById('pnl24h').textContent = 'ERR';
           document.getElementById('pnlTotalSection').textContent = 'ERR';
           document.getElementById('pnl24hSection').textContent = 'ERR';
           document.getElementById('pnlSignalCount').textContent = 'ERR';
+          const rows = document.getElementById('tokenPnlRows');
+          rows.innerHTML = '<tr><td colspan="7" class="muted">加载单币盈亏失败</td></tr>';
           console.error('loadPnl failed:', error);
         }
       }

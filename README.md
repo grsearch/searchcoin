@@ -121,7 +121,7 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 
 - 页面地址：`/`
 - API：`/api/whitelist`、`/api/signals`、`/api/pnl`、`/api/health`
-- 展示内容：白名单数量、可交易数量、TopN、总盈亏（按 BUY=1 SOL）、24h 回测盈亏、生成时间、币种列表（Rank/LP/24h Volume/FDV/Age），并新增独立“盈亏统计”区块
+- 展示内容：白名单数量、可交易数量、TopN、总盈亏（按 BUY=1 SOL）、24h 回测盈亏、生成时间、币种列表（Rank/LP/24h Volume/FDV/Age），并新增“单个代币盈亏（All Time / 24h）”
 - 合约地址可点击并跳转 GMGN（`https://gmgn.ai/sol/token/<token>`）
 - 新增“信号发送记录”看板（来自 `signal-events.jsonl`）
 

@@ -48,9 +48,29 @@ function selectTradeSignals(events, sinceTs = null) {
     .sort((a, b) => (safeTs(a) ?? 0) - (safeTs(b) ?? 0));
 }
 
+function ensureTokenStat(map, token, symbol = 'N/A') {
+  if (!map.has(token)) {
+    map.set(token, {
+      tokenAddress: token,
+      symbol,
+      buyCount: 0,
+      sellCount: 0,
+      realizedPnlSol: 0,
+      unrealizedPnlSol: 0,
+      totalPnlSol: 0,
+      openQty: 0,
+      openCostSol: 0,
+      markPrice: null,
+    });
+  }
+  return map.get(token);
+}
+
 function computePnlFromSignals(signals) {
   const positions = new Map();
   const lastPriceByToken = new Map();
+  const tokenStats = new Map();
+
   let realizedPnlSol = 0;
   let buyCount = 0;
   let sellCount = 0;
@@ -62,6 +82,7 @@ function computePnlFromSignals(signals) {
 
     lastPriceByToken.set(token, price);
     const current = positions.get(token) ?? { qty: 0, costSol: 0, symbol: s.symbol ?? 'N/A' };
+    const stat = ensureTokenStat(tokenStats, token, s.symbol ?? current.symbol);
 
     if (s.signal === 'BUY') {
       const qty = POSITION_SIZE_SOL / price;
@@ -69,6 +90,8 @@ function computePnlFromSignals(signals) {
       current.costSol += POSITION_SIZE_SOL;
       current.symbol = s.symbol ?? current.symbol;
       positions.set(token, current);
+
+      stat.buyCount += 1;
       buyCount += 1;
       continue;
     }
@@ -76,24 +99,37 @@ function computePnlFromSignals(signals) {
     if (s.signal === 'SELL') {
       if (current.qty > 0) {
         const proceeds = current.qty * price;
-        realizedPnlSol += proceeds - current.costSol;
+        const pnl = proceeds - current.costSol;
+        realizedPnlSol += pnl;
+        stat.realizedPnlSol += pnl;
         current.qty = 0;
         current.costSol = 0;
         positions.set(token, current);
       }
+      stat.sellCount += 1;
       sellCount += 1;
     }
   }
 
   let unrealizedPnlSol = 0;
   const openPositions = [];
+
   for (const [token, pos] of positions.entries()) {
+    const stat = ensureTokenStat(tokenStats, token, pos.symbol);
     if (pos.qty <= 0) continue;
+
     const mark = lastPriceByToken.get(token);
     if (!Number.isFinite(mark) || mark <= 0) continue;
+
     const value = pos.qty * mark;
     const pnl = value - pos.costSol;
+
     unrealizedPnlSol += pnl;
+    stat.unrealizedPnlSol += pnl;
+    stat.openQty = pos.qty;
+    stat.openCostSol = pos.costSol;
+    stat.markPrice = mark;
+
     openPositions.push({
       tokenAddress: token,
       symbol: pos.symbol,
@@ -105,6 +141,24 @@ function computePnlFromSignals(signals) {
     });
   }
 
+  const perToken = [...tokenStats.values()]
+    .map((x) => {
+      const total = x.realizedPnlSol + x.unrealizedPnlSol;
+      return {
+        tokenAddress: x.tokenAddress,
+        symbol: x.symbol,
+        buyCount: x.buyCount,
+        sellCount: x.sellCount,
+        realizedPnlSol: Number(x.realizedPnlSol.toFixed(8)),
+        unrealizedPnlSol: Number(x.unrealizedPnlSol.toFixed(8)),
+        totalPnlSol: Number(total.toFixed(8)),
+        openQty: Number(x.openQty.toFixed(8)),
+        openCostSol: Number(x.openCostSol.toFixed(8)),
+        markPrice: x.markPrice == null ? null : Number(x.markPrice.toFixed(8)),
+      };
+    })
+    .sort((a, b) => b.totalPnlSol - a.totalPnlSol);
+
   const totalPnlSol = realizedPnlSol + unrealizedPnlSol;
 
   return {
@@ -115,6 +169,7 @@ function computePnlFromSignals(signals) {
     realizedPnlSol: Number(realizedPnlSol.toFixed(8)),
     unrealizedPnlSol: Number(unrealizedPnlSol.toFixed(8)),
     totalPnlSol: Number(totalPnlSol.toFixed(8)),
+    perToken,
     openPositions,
   };
 }
