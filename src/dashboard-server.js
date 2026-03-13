@@ -3,6 +3,7 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { getPnlSummary } from './backtest-pnl.js';
 
 const CONFIG = {
   port: Number(process.env.DASHBOARD_PORT ?? 4173),
@@ -173,6 +174,14 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/signals') {
     const data = await readSignalEvents();
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(data));
+    return;
+  }
+
+
+  if (url.pathname === '/api/pnl') {
+    const data = await getPnlSummary({ signalLogPath: CONFIG.signalLogPath });
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(data));
     return;

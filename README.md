@@ -47,6 +47,12 @@ npm run read:whitelist
 GECKO_API_KEY=your_key SIGNAL_AGGREGATE=5 TREND_AGGREGATE=15 WEBHOOK_URL=https://your-webhook.endpoint npm run run:signals
 ```
 
+- 运行回测/盈亏统计（按每次 BUY=1 SOL，可连续加仓 1 SOL）：
+
+```bash
+npm run run:backtest
+```
+
 - 每 15 分钟完整周期（更新白名单 + 退出币优先发 SELL）：
 
 ```bash
@@ -120,8 +126,8 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 新增本地 Dashboard（参考你给的方向，结合当前仓库实现）：
 
 - 页面地址：`/`
-- API：`/api/whitelist`、`/api/health`
-- 展示内容：白名单数量、可交易数量、TopN、生成时间、币种列表
+- API：`/api/whitelist`、`/api/signals`、`/api/pnl`、`/api/health`
+- 展示内容：白名单数量、可交易数量、TopN、总盈亏（按 BUY=1 SOL）、24h 回测盈亏、生成时间、币种列表
 - 合约地址可点击并跳转 GMGN（`https://gmgn.ai/sol/token/<token>`）
 - 新增“信号发送记录”看板（来自 `signal-events.jsonl`）
 

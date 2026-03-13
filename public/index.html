@@ -11,7 +11,7 @@
       h2 { margin: 24px 0 10px; font-size: 18px; }
       a { color: #7db4ff; text-decoration: none; }
       a:hover { text-decoration: underline; }
-      .cards { display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; margin: 16px 0 24px; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0 24px; }
       .card { background:#151c33; border:1px solid #2a3560; border-radius: 10px; padding: 14px; }
       .label { font-size: 12px; color: #9db0ff; }
       .value { font-size: 22px; font-weight: 700; margin-top: 6px; }
@@ -36,6 +36,8 @@
         <div class="card"><div class="label">Tradable Count</div><div class="value" id="tradable">-</div></div>
         <div class="card"><div class="label">Top N</div><div class="value" id="topn">-</div></div>
         <div class="card"><div class="label">Signal Records</div><div class="value" id="signalCount">-</div></div>
+        <div class="card"><div class="label">Total PnL (1 SOL per BUY)</div><div class="value" id="pnlTotal" style="font-size:18px">-</div></div>
+        <div class="card"><div class="label">Backtest PnL 24h</div><div class="value" id="pnl24h" style="font-size:18px">-</div></div>
         <div class="card"><div class="label">Generated At</div><div class="value" id="gen" style="font-size:14px">-</div></div>
       </div>
 
@@ -97,6 +99,23 @@
         }
       }
 
+
+      function formatSolPnl(v) {
+        if (v == null || Number.isNaN(Number(v))) return '-';
+        const n = Number(v);
+        const sign = n > 0 ? '+' : '';
+        return `${sign}${n.toFixed(4)} SOL`;
+      }
+
+      async function loadPnl() {
+        const res = await fetch('/api/pnl');
+        const data = await res.json();
+        const total = data?.allTime?.totalPnlSol;
+        const backtest24h = data?.last24h?.totalPnlSol;
+        document.getElementById('pnlTotal').textContent = formatSolPnl(total);
+        document.getElementById('pnl24h').textContent = formatSolPnl(backtest24h);
+      }
+
       async function loadSignals() {
         const res = await fetch('/api/signals');
         const data = await res.json();
@@ -122,7 +141,7 @@
       }
 
       async function loadAll() {
-        await Promise.all([loadWhitelist(), loadSignals()]);
+        await Promise.all([loadWhitelist(), loadSignals(), loadPnl()]);
       }
 
       loadAll();
