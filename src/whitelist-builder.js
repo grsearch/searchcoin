@@ -12,12 +12,11 @@ const CONFIG = {
   quoteMint: process.env.QUOTE_MINT ?? 'So11111111111111111111111111111111111111112',
   outputPath: process.env.OUTPUT_PATH ?? 'whitelist.json',
   topN: Number(process.env.TOP_N ?? 40),
-  minPoolAgeHours: Number(process.env.MIN_POOL_AGE_HOURS ?? 0),
+  minPoolAgeHours: Number(process.env.MIN_POOL_AGE_HOURS ?? 48),
   maxPoolAgeHours: Number(process.env.MAX_POOL_AGE_HOURS ?? Number.POSITIVE_INFINITY),
   minLiquidityUsd: Number(process.env.MIN_LIQUIDITY_USD ?? 50_000),
-  minVolume24hUsd: Number(process.env.MIN_VOLUME_24H_USD ?? 100_000),
-  minTxCount24h: Number(process.env.MIN_TX_COUNT_24H ?? 1_000),
-  minFdvUsd: Number(process.env.MIN_FDV_USD ?? 0),
+  minVolume24hUsd: Number(process.env.MIN_VOLUME_24H_USD ?? 300_000),
+  minFdvUsd: Number(process.env.MIN_FDV_USD ?? 50_000),
   maxFdvUsd: Number(process.env.MAX_FDV_USD ?? Number.POSITIVE_INFINITY),
   minAtrPct5m14: Number(process.env.MIN_ATR_PCT_5M14 ?? 0.05),
   minAvgRangePct5m: Number(process.env.MIN_AVG_RANGE_5M ?? process.env.MIN_AVG_RANGE_PCT_5M_24H ?? 0.025),
@@ -339,10 +338,10 @@ function getSoftPassCount(flags) {
 }
 
 function getHardFilterFailReason(pool) {
-  if (CONFIG.blacklist.has(pool.baseMint)) return 'blacklist';
+  if (pool.ageHours < CONFIG.minPoolAgeHours) return 'age';
   if (pool.liquidityUsd < CONFIG.minLiquidityUsd) return 'liquidity';
   if (pool.volume24hUsd < CONFIG.minVolume24hUsd) return 'volume24h';
-  if (pool.txCount24h < CONFIG.minTxCount24h) return 'txCount24h';
+  if (pool.fdvUsd < CONFIG.minFdvUsd || pool.fdvUsd > CONFIG.maxFdvUsd) return 'fdv';
   return null;
 }
 
@@ -438,10 +437,6 @@ async function main() {
         continue;
       }
 
-      if (metrics.atrPct < CONFIG.minAtrPct5m14) {
-        increaseCounter(metricRejects, 'atr5m');
-        continue;
-      }
       const softMetricFlags = getSoftMetricFlags(pool, metrics);
       const softPassCount = getSoftPassCount(softMetricFlags);
       for (const [k, passed] of Object.entries(softMetricFlags)) {
@@ -511,9 +506,6 @@ async function main() {
 
   const whitelist = [];
   for (const token of scored) {
-    const routable = await checkJupiterRoutable(token.baseMint);
-    if (!routable) continue;
-
     const key = (token.baseMint ?? '').toLowerCase();
     let resolvedSymbol = tokenInfoMap.get(key)?.symbol ?? token.symbol ?? '';
     if (!resolvedSymbol) {
@@ -565,7 +557,6 @@ async function main() {
       maxPoolAgeHours: CONFIG.maxPoolAgeHours,
       minLiquidityUsd: CONFIG.minLiquidityUsd,
       minVolume24hUsd: CONFIG.minVolume24hUsd,
-      minTxCount24h: CONFIG.minTxCount24h,
       minFdvUsd: CONFIG.minFdvUsd,
       maxFdvUsd: CONFIG.maxFdvUsd,
       minAtrPct5m14: CONFIG.minAtrPct5m14,

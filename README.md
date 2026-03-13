@@ -13,7 +13,7 @@
 
 - 数据源：CoinGecko Pro Onchain（GeckoTerminal 数据）
 - 候选来源：`trending_pools`、`new_pools`、`megafilter`
-- 硬过滤：流动性、24h 成交额、24h 交易笔数、黑名单（其余交给评分排序）
+- 硬过滤：仅保留 FDV 50,000~5,000,000、LP>50,000、24h成交额>300,000、池龄>48h
 - 白名单规则：默认保留前 `40`（`TOP_N` 默认值，可调整）
 - 白名单输出：`whitelist.json`
 - 信号输出：基于 RSI 的 BUY/SELL webhook 消息（仅信号，不交易）
@@ -56,12 +56,11 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 ## 主要环境变量（白名单构建）
 
 - `TOP_N`（默认 `40`）
-- `MIN_POOL_AGE_HOURS`（默认 `0`，默认不启用池龄过滤）
+- `MIN_POOL_AGE_HOURS`（默认 `48`）
 - `MAX_POOL_AGE_HOURS`（默认 `Infinity`，默认不启用池龄上限）
 - `MIN_LIQUIDITY_USD`（默认 `50000`）
-- `MIN_VOLUME_24H_USD`（默认 `100000`）
-- `MIN_TX_COUNT_24H`（默认 `1000`）
-- `MIN_FDV_USD`（默认 `0`，默认不启用）
+- `MIN_VOLUME_24H_USD`（默认 `300000`）
+- `MIN_FDV_USD`（默认 `50000`）
 - `MAX_FDV_USD`（默认 `Infinity`，默认不启用）
 - `MIN_VOLUME_LIQUIDITY_RATIO`（默认 `3`）
 - `MIN_AVG_RANGE_5M`（默认 `0.025`）
@@ -70,7 +69,7 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - `MIN_P90_RANGE_PCT_5M`（默认 `0.03`）
 - `MIN_AVG_RANGE_1M`（默认 `0`，可选 1m 振幅过滤，建议从 `0.012` 开始）
 - `FILTER_DEBUG`（默认 `false`，开启后输出各过滤条件淘汰计数，便于定位“只筛到少量币”的瓶颈）
-- 指标过滤模式：波动类指标使用“软过滤 + 评分排序”（不过早淘汰，最终按分数取 TopN）
+- 指标处理：除上述4个基础条件外，其它指标不做硬过滤，仅用于 Volatility Score 排名
 - 其他：`GECKO_API_KEY`、`GECKO_AUTH_MODE`、`NETWORK`、`OUTPUT_PATH`、`BLACKLIST_MINTS`、`QUOTE_MINT`
 
 ## 主要环境变量（信号 / 周期）
@@ -135,7 +134,7 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 
 白名单采用“**基础过滤 + 评分排序**”模型：
 
-- 基础过滤：`MIN_LIQUIDITY_USD`、`MIN_VOLUME_24H_USD`、`MIN_TX_COUNT_24H`（+ 黑名单）
+- 基础过滤：`MIN_POOL_AGE_HOURS`、`MIN_LIQUIDITY_USD`、`MIN_VOLUME_24H_USD`、`MIN_FDV_USD`~`MAX_FDV_USD`
 - 评分排序：按 `finalScore` 取前 `TOP_N`
 
 评分公式：
