@@ -46,6 +46,8 @@
       <div class="cards" style="margin-top:0;">
         <div class="card"><div class="label">Total PnL (All Time)</div><div class="value" id="pnlTotalSection">-</div></div>
         <div class="card"><div class="label">Backtest PnL 24h</div><div class="value" id="pnl24hSection">-</div></div>
+        <div class="card"><div class="label">Backtest 24h Realized</div><div class="value" id="pnl24hRealized">-</div></div>
+        <div class="card"><div class="label">Backtest 24h Unrealized</div><div class="value" id="pnl24hUnrealized">-</div></div>
         <div class="card"><div class="label">BUY / SELL Signals</div><div class="value" id="pnlSignalCount">-</div></div>
       </div>
 
@@ -165,6 +167,8 @@
           const data = await res.json();
           const total = data?.allTime?.totalPnlSol;
           const backtest24h = data?.last24h?.totalPnlSol;
+          const realized24h = data?.last24h?.realizedPnlSol;
+          const unrealized24h = data?.last24h?.unrealizedPnlSol;
           const signalCount = (data?.allTime?.buyCount ?? 0) + (data?.allTime?.sellCount ?? 0);
 
           document.getElementById('pnlTotal').textContent = formatSolPnl(total);
@@ -172,6 +176,8 @@
           document.getElementById('pnlTotalSection').textContent = formatSolPnl(total);
           document.getElementById('pnl24hSection').textContent = formatSolPnl(backtest24h);
           document.getElementById('pnlSignalCount').textContent = String(signalCount);
+          document.getElementById('pnl24hRealized').textContent = formatSolPnl(realized24h);
+          document.getElementById('pnl24hUnrealized').textContent = formatSolPnl(unrealized24h);
           renderTokenPnlRows(data?.allTime?.perToken || [], data?.last24h?.perToken || []);
         } catch (error) {
           document.getElementById('pnlTotal').textContent = 'ERR';
@@ -179,6 +185,8 @@
           document.getElementById('pnlTotalSection').textContent = 'ERR';
           document.getElementById('pnl24hSection').textContent = 'ERR';
           document.getElementById('pnlSignalCount').textContent = 'ERR';
+          document.getElementById('pnl24hRealized').textContent = 'ERR';
+          document.getElementById('pnl24hUnrealized').textContent = 'ERR';
           const rows = document.getElementById('tokenPnlRows');
           rows.innerHTML = '<tr><td colspan="7" class="muted">加载单币盈亏失败</td></tr>';
           console.error('loadPnl failed:', error);

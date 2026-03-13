@@ -180,10 +180,25 @@ export async function getPnlSummary({ signalLogPath = DEFAULT_SIGNAL_LOG_PATH } 
   const since24h = Date.now() - 24 * 60 * 60 * 1000;
   const signals24h = selectTradeSignals(events, since24h);
 
+  const allTime = computePnlFromSignals(allSignals);
+  const last24h = computePnlFromSignals(signals24h);
+
   return {
     generatedAt: new Date().toISOString(),
-    allTime: computePnlFromSignals(allSignals),
-    last24h: computePnlFromSignals(signals24h),
+    window: {
+      last24hSince: new Date(since24h).toISOString(),
+      now: new Date().toISOString(),
+    },
+    allTime,
+    last24h,
+    backtest24hSummary: {
+      signalCount: last24h.signalCount,
+      buyCount: last24h.buyCount,
+      sellCount: last24h.sellCount,
+      realizedPnlSol: last24h.realizedPnlSol,
+      unrealizedPnlSol: last24h.unrealizedPnlSol,
+      totalPnlSol: last24h.totalPnlSol,
+    },
   };
 }
 
