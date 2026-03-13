@@ -38,35 +38,15 @@
         <div class="card"><div class="label">Signal Records</div><div class="value" id="signalCount">-</div></div>
         <div class="card"><div class="label">Total PnL (1 SOL per BUY)</div><div class="value" id="pnlTotal" style="font-size:18px">-</div></div>
         <div class="card"><div class="label">Backtest PnL 24h</div><div class="value" id="pnl24h" style="font-size:18px">-</div></div>
+        <div class="card"><div class="label">Backtest 24h Realized/Unrealized</div><div class="value" id="pnl24hRU" style="font-size:14px">-</div></div>
         <div class="card"><div class="label">Generated At</div><div class="value" id="gen" style="font-size:14px">-</div></div>
       </div>
-
-
-      <h2>盈亏统计（按 BUY=1 SOL）</h2>
-      <div class="cards" style="margin-top:0;">
-        <div class="card"><div class="label">Total PnL (All Time)</div><div class="value" id="pnlTotalSection">-</div></div>
-        <div class="card"><div class="label">Backtest PnL 24h</div><div class="value" id="pnl24hSection">-</div></div>
-        <div class="card"><div class="label">Backtest 24h Realized</div><div class="value" id="pnl24hRealized">-</div></div>
-        <div class="card"><div class="label">Backtest 24h Unrealized</div><div class="value" id="pnl24hUnrealized">-</div></div>
-        <div class="card"><div class="label">BUY / SELL Signals</div><div class="value" id="pnlSignalCount">-</div></div>
-      </div>
-
-
-      <h2>单个代币盈亏（All Time / 24h）</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Symbol</th><th>Token</th><th>BUY</th><th>SELL</th><th>All Time PnL (SOL)</th><th>24h Backtest PnL (SOL)</th><th>Open Qty</th>
-          </tr>
-        </thead>
-        <tbody id="tokenPnlRows"></tbody>
-      </table>
 
       <h2>Whitelist</h2>
       <table>
         <thead>
           <tr>
-            <th>Symbol</th><th>Token Address (GMGN)</th><th>Rank</th><th>Liquidity</th><th>Volume 24h</th><th>FDV</th><th>Age(h)</th><th>Tradable</th>
+            <th>Symbol</th><th>Token Address (GMGN)</th><th>Rank</th><th>Liquidity</th><th>Volume 24h</th><th>FDV</th><th>LP/FDV%</th><th>Age(h)</th><th>PnL All Time(SOL)</th><th>PnL 24h(SOL)</th><th>BUY/SELL</th><th>Tradable</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -88,6 +68,13 @@
         return `https://gmgn.ai/sol/token/${tokenAddress}`;
       }
 
+      function formatSolPnl(v) {
+        if (v == null || Number.isNaN(Number(v))) return '-';
+        const n = Number(v);
+        const sign = n > 0 ? '+' : '';
+        return `${sign}${n.toFixed(4)} SOL`;
+      }
+
       async function loadWhitelist() {
         const res = await fetch('/api/whitelist');
         const data = await res.json();
@@ -95,6 +82,11 @@
         document.getElementById('tradable').textContent = data.tradableCount;
         document.getElementById('topn').textContent = data.config?.topN ?? '-';
         document.getElementById('gen').textContent = data.generatedAt ?? '-';
+
+        const pnl = data.pnlSummary || {};
+        document.getElementById('pnlTotal').textContent = formatSolPnl(pnl.totalAllTimeSol);
+        document.getElementById('pnl24h').textContent = formatSolPnl(pnl.total24hSol);
+        document.getElementById('pnl24hRU').textContent = `${formatSolPnl(pnl.realized24hSol)} / ${formatSolPnl(pnl.unrealized24hSol)}`;
 
         const rows = document.getElementById('rows');
         rows.innerHTML = '';
@@ -109,87 +101,14 @@
             <td>${t.liquidityUsd ?? ''}</td>
             <td>${t.volume24hUsd ?? ''}</td>
             <td>${t.fdvUsd ?? ''}</td>
+            <td>${t.lpFdvRatio ?? ''}</td>
             <td>${t.ageHours ?? ''}</td>
-            <td class="${t.tradable ? "ok":""}">${t.tradable ? "YES":"NO"}</td>
+            <td>${formatSolPnl(t.pnlAllTimeSol)}</td>
+            <td>${formatSolPnl(t.pnl24hSol)}</td>
+            <td>${(t.pnlBuyCount ?? 0)}/${(t.pnlSellCount ?? 0)}</td>
+            <td class="${t.tradable ? 'ok' : ''}">${t.tradable ? 'YES' : 'NO'}</td>
           `;
           rows.appendChild(tr);
-        }
-      }
-
-
-      function formatSolPnl(v) {
-        if (v == null || Number.isNaN(Number(v))) return '-';
-        const n = Number(v);
-        const sign = n > 0 ? '+' : '';
-        return `${sign}${n.toFixed(4)} SOL`;
-      }
-
-
-      function renderTokenPnlRows(allTimeTokens, last24hTokens) {
-        const rows = document.getElementById('tokenPnlRows');
-        rows.innerHTML = '';
-
-        const byToken24h = new Map((last24hTokens || []).map((x) => [x.tokenAddress, x]));
-        const merged = (allTimeTokens || []).map((item) => {
-          const h24 = byToken24h.get(item.tokenAddress) || {};
-          return {
-            ...item,
-            pnl24h: Number(h24.totalPnlSol ?? 0),
-          };
-        }).sort((a, b) => b.totalPnlSol - a.totalPnlSol);
-
-        if (!merged.length) {
-          const tr = document.createElement('tr');
-          tr.innerHTML = '<td colspan="7" class="muted">暂无信号，暂无单币盈亏数据。</td>';
-          rows.appendChild(tr);
-          return;
-        }
-
-        for (const t of merged) {
-          const token = t.tokenAddress || '';
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${t.symbol || 'N/A'}</td>
-            <td class="mono">${token ? `<a href="${gmgnLink(token)}" target="_blank" rel="noopener noreferrer">${token}</a>` : '-'}</td>
-            <td>${t.buyCount ?? 0}</td>
-            <td>${t.sellCount ?? 0}</td>
-            <td>${formatSolPnl(t.totalPnlSol)}</td>
-            <td>${formatSolPnl(t.pnl24h)}</td>
-            <td>${t.openQty ?? 0}</td>
-          `;
-          rows.appendChild(tr);
-        }
-      }
-
-      async function loadPnl() {
-        try {
-          const res = await fetch('/api/pnl');
-          const data = await res.json();
-          const total = data?.allTime?.totalPnlSol;
-          const backtest24h = data?.last24h?.totalPnlSol;
-          const realized24h = data?.last24h?.realizedPnlSol;
-          const unrealized24h = data?.last24h?.unrealizedPnlSol;
-          const signalCount = (data?.allTime?.buyCount ?? 0) + (data?.allTime?.sellCount ?? 0);
-
-          document.getElementById('pnlTotal').textContent = formatSolPnl(total);
-          document.getElementById('pnl24h').textContent = formatSolPnl(backtest24h);
-          document.getElementById('pnlTotalSection').textContent = formatSolPnl(total);
-          document.getElementById('pnl24hSection').textContent = formatSolPnl(backtest24h);
-          document.getElementById('pnlSignalCount').textContent = String(signalCount);
-          document.getElementById('pnl24hRealized').textContent = formatSolPnl(realized24h);
-          document.getElementById('pnl24hUnrealized').textContent = formatSolPnl(unrealized24h);
-          renderTokenPnlRows(data?.allTime?.perToken || [], data?.last24h?.perToken || []);
-        } catch (error) {
-          document.getElementById('pnlTotal').textContent = 'ERR';
-          document.getElementById('pnl24h').textContent = 'ERR';
-          document.getElementById('pnlTotalSection').textContent = 'ERR';
-          document.getElementById('pnl24hSection').textContent = 'ERR';
-          document.getElementById('pnlSignalCount').textContent = 'ERR';
-          document.getElementById('pnl24hRealized').textContent = 'ERR';
-          document.getElementById('pnl24hUnrealized').textContent = 'ERR';
-          const rows = document.getElementById('tokenPnlRows');
-          rows.innerHTML = '<tr><td colspan="7" class="muted">加载单币盈亏失败</td></tr>';
-          console.error('loadPnl failed:', error);
         }
       }
 
@@ -218,7 +137,7 @@
       }
 
       async function loadAll() {
-        await Promise.allSettled([loadWhitelist(), loadSignals(), loadPnl()]);
+        await Promise.allSettled([loadWhitelist(), loadSignals()]);
       }
 
       loadAll();

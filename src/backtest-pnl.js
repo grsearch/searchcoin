@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 
 const DEFAULT_SIGNAL_LOG_PATH = process.env.SIGNAL_LOG_PATH ?? 'signal-events.jsonl';
+const DEFAULT_WHITELIST_PATH = process.env.WHITELIST_PATH ?? 'whitelist.json';
 const POSITION_SIZE_SOL = Number(process.env.BACKTEST_POSITION_SIZE_SOL ?? 1);
 
 function asNumber(v, fallback = NaN) {
@@ -64,6 +65,44 @@ function ensureTokenStat(map, token, symbol = 'N/A') {
     });
   }
   return map.get(token);
+}
+
+
+async function loadWhitelistTokens(path = DEFAULT_WHITELIST_PATH) {
+  try {
+    const raw = await fs.readFile(path, 'utf8');
+    const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed?.whitelist) ? parsed.whitelist : [];
+    return list
+      .map((x) => ({
+        tokenAddress: x?.tokenAddress ?? '',
+        symbol: x?.symbol ?? 'N/A',
+      }))
+      .filter((x) => x.tokenAddress);
+  } catch {
+    return [];
+  }
+}
+
+function mergeWhitelistTokens(perToken, whitelistTokens) {
+  const existing = new Map(perToken.map((x) => [(x.tokenAddress ?? '').toLowerCase(), x]));
+  for (const token of whitelistTokens) {
+    const key = (token.tokenAddress ?? '').toLowerCase();
+    if (!key || existing.has(key)) continue;
+    existing.set(key, {
+      tokenAddress: token.tokenAddress,
+      symbol: token.symbol || 'N/A',
+      buyCount: 0,
+      sellCount: 0,
+      realizedPnlSol: 0,
+      unrealizedPnlSol: 0,
+      totalPnlSol: 0,
+      openQty: 0,
+      openCostSol: 0,
+      markPrice: null,
+    });
+  }
+  return [...existing.values()].sort((a, b) => b.totalPnlSol - a.totalPnlSol);
 }
 
 function computePnlFromSignals(signals) {
@@ -174,14 +213,19 @@ function computePnlFromSignals(signals) {
   };
 }
 
-export async function getPnlSummary({ signalLogPath = DEFAULT_SIGNAL_LOG_PATH } = {}) {
-  const events = await loadSignalEvents(signalLogPath);
+export async function getPnlSummary({ signalLogPath = DEFAULT_SIGNAL_LOG_PATH, whitelistPath = DEFAULT_WHITELIST_PATH } = {}) {
+  const [events, whitelistTokens] = await Promise.all([
+    loadSignalEvents(signalLogPath),
+    loadWhitelistTokens(whitelistPath),
+  ]);
   const allSignals = selectTradeSignals(events);
   const since24h = Date.now() - 24 * 60 * 60 * 1000;
   const signals24h = selectTradeSignals(events, since24h);
 
   const allTime = computePnlFromSignals(allSignals);
   const last24h = computePnlFromSignals(signals24h);
+  allTime.perToken = mergeWhitelistTokens(allTime.perToken, whitelistTokens);
+  last24h.perToken = mergeWhitelistTokens(last24h.perToken, whitelistTokens);
 
   return {
     generatedAt: new Date().toISOString(),

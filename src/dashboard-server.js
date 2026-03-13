@@ -78,6 +78,15 @@ async function fetchTokenSymbols(addresses) {
   return out;
 }
 
+
+async function readPnlSummary() {
+  try {
+    return await getPnlSummary({ signalLogPath: CONFIG.signalLogPath, whitelistPath: CONFIG.whitelistPath });
+  } catch {
+    return null;
+  }
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -92,11 +101,23 @@ async function readWhitelist() {
     const whitelist = Array.isArray(parsed?.whitelist) ? parsed.whitelist : [];
     const missing = whitelist.filter((x) => !x?.symbol && x?.tokenAddress).map((x) => x.tokenAddress);
     const symbolMap = await fetchTokenSymbols(missing);
+    const pnlSummary = await readPnlSummary();
+    const byAllTime = new Map((pnlSummary?.allTime?.perToken ?? []).map((x) => [(x?.tokenAddress ?? '').toLowerCase(), x]));
+    const by24h = new Map((pnlSummary?.last24h?.perToken ?? []).map((x) => [(x?.tokenAddress ?? '').toLowerCase(), x]));
+
     const enriched = whitelist.map((item) => {
-      if (item?.symbol) return item;
       const key = (item?.tokenAddress ?? '').toLowerCase();
-      const sym = symbolMap.get(key) || `${(item?.tokenAddress ?? '').slice(0, 6)}...`;
-      return { ...item, symbol: sym };
+      const sym = item?.symbol || symbolMap.get(key) || `${(item?.tokenAddress ?? '').slice(0, 6)}...`;
+      const allTime = byAllTime.get(key) ?? {};
+      const h24 = by24h.get(key) ?? {};
+      return {
+        ...item,
+        symbol: sym,
+        pnlAllTimeSol: Number(allTime.totalPnlSol ?? 0),
+        pnl24hSol: Number(h24.totalPnlSol ?? 0),
+        pnlBuyCount: Number(allTime.buyCount ?? 0),
+        pnlSellCount: Number(allTime.sellCount ?? 0),
+      };
     });
 
     return {
@@ -104,10 +125,17 @@ async function readWhitelist() {
       config: parsed?.config ?? {},
       count: enriched.length,
       tradableCount: enriched.filter((x) => x?.tradable === true).length,
+      pnlSummary: pnlSummary ? {
+        totalAllTimeSol: pnlSummary?.allTime?.totalPnlSol ?? 0,
+        total24hSol: pnlSummary?.last24h?.totalPnlSol ?? 0,
+        realized24hSol: pnlSummary?.last24h?.realizedPnlSol ?? 0,
+        unrealized24hSol: pnlSummary?.last24h?.unrealizedPnlSol ?? 0,
+        signalCount: (pnlSummary?.allTime?.buyCount ?? 0) + (pnlSummary?.allTime?.sellCount ?? 0),
+      } : null,
       whitelist: enriched,
     };
   } catch {
-    return { generatedAt: null, config: {}, count: 0, tradableCount: 0, whitelist: [] };
+    return { generatedAt: null, config: {}, count: 0, tradableCount: 0, pnlSummary: null, whitelist: [] };
   }
 }
 
@@ -181,7 +209,7 @@ const server = http.createServer(async (req, res) => {
 
 
   if (url.pathname === '/api/pnl') {
-    const data = await getPnlSummary({ signalLogPath: CONFIG.signalLogPath });
+    const data = await getPnlSummary({ signalLogPath: CONFIG.signalLogPath, whitelistPath: CONFIG.whitelistPath });
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(data));
     return;

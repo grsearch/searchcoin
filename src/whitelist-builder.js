@@ -16,6 +16,7 @@ const CONFIG = {
   minFdvUsd: Math.max(Number(process.env.MIN_FDV_USD ?? 500_000), 500_000),
   maxFdvUsd: Math.min(Number(process.env.MAX_FDV_USD ?? 5_000_000), 5_000_000),
   requestDelayMs: Number(process.env.REQUEST_DELAY_MS ?? 200),
+  minLpFdvRatio: Number(process.env.MIN_LP_FDV_RATIO ?? 0.10),
   candidatePages: Number(process.env.CANDIDATE_PAGES ?? 5),
   filterDebug: (process.env.FILTER_DEBUG ?? 'true').toLowerCase() === 'true',
 };
@@ -125,6 +126,7 @@ function buildPoolCandidate(pool) {
   const txCount24h = buys24h + sells24h;
   const fdvUsd = asNumber(attrs.fdv_usd ?? attrs.market_cap_usd);
   const ageHours = parsePoolAgeHours(attrs.pool_created_at);
+  const lpFdvRatio = fdvUsd > 0 ? liquidityUsd / fdvUsd : 0;
 
   const baseTokenId = safeGet(pool, 'relationships', 'base_token', 'data', 'id') ?? '';
 
@@ -137,6 +139,7 @@ function buildPoolCandidate(pool) {
     txCount24h,
     fdvUsd,
     ageHours,
+    lpFdvRatio,
   };
 }
 
@@ -183,6 +186,7 @@ function getHardFilterFailReason(pool) {
   if (pool.liquidityUsd < CONFIG.minLiquidityUsd) return 'liquidity';
   if (pool.volume24hUsd < CONFIG.minVolume24hUsd) return 'volume24h';
   if (pool.fdvUsd < CONFIG.minFdvUsd || pool.fdvUsd > CONFIG.maxFdvUsd) return 'fdv';
+  if (pool.lpFdvRatio < CONFIG.minLpFdvRatio) return 'lpFdvRatio';
   return null;
 }
 
@@ -241,6 +245,7 @@ async function main() {
       txCount24h: token.txCount24h,
       fdvUsd: Number(token.fdvUsd.toFixed(2)),
       ageHours: Number(token.ageHours.toFixed(2)),
+      lpFdvRatio: Number((token.lpFdvRatio * 100).toFixed(3)),
       tradable: true,
     });
 
@@ -259,6 +264,7 @@ async function main() {
       minVolume24hUsd: CONFIG.minVolume24hUsd,
       minFdvUsd: CONFIG.minFdvUsd,
       maxFdvUsd: CONFIG.maxFdvUsd,
+      minLpFdvRatio: CONFIG.minLpFdvRatio,
       fdvPolicy: 'hard_enforced_500k_to_5m',
       rankMode: 'volume_desc_then_liquidity_desc',
       candidatePages: CONFIG.candidatePages,

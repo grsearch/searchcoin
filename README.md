@@ -67,6 +67,7 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - `MIN_VOLUME_24H_USD`（默认 `300000`）
 - `MIN_FDV_USD`（默认 `500000`，且最低强制为 `500000`）
 - `MAX_FDV_USD`（默认 `5000000`，且最高强制为 `5000000`）
+- `MIN_LP_FDV_RATIO`（默认 `0.10`，即 LP/FDV >= 10%）
 - `CANDIDATE_PAGES`（默认 `5`，每个池子列表抓取页数）
 - `FILTER_DEBUG`（默认 `true`，打印拒绝原因统计）
 - 其它指标已移除，不参与筛选与排序
@@ -120,8 +121,8 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 新增本地 Dashboard（参考你给的方向，结合当前仓库实现）：
 
 - 页面地址：`/`
-- API：`/api/whitelist`、`/api/signals`、`/api/pnl`、`/api/health`
-- 展示内容：白名单数量、可交易数量、TopN、总盈亏（按 BUY=1 SOL）、24h 回测盈亏、生成时间、币种列表（Rank/LP/24h Volume/FDV/Age），并新增“单个代币盈亏（All Time / 24h）”，以及24h回测 Realized/Unrealized/Total
+- API：`/api/whitelist`（含汇总与单币盈亏）、`/api/signals`、`/api/pnl`、`/api/health`
+- 展示内容：白名单数量、可交易数量、TopN、总盈亏（按 BUY=1 SOL）、24h 回测盈亏、生成时间、币种列表（Rank/LP/24h Volume/FDV/Age），并在白名单表中直接展示单币盈亏（All Time / 24h）和 BUY/SELL 次数，以及24h回测 Realized/Unrealized/Total
 - 合约地址可点击并跳转 GMGN（`https://gmgn.ai/sol/token/<token>`）
 - 新增“信号发送记录”看板（来自 `signal-events.jsonl`）
 
@@ -135,10 +136,11 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 当前程序仅按以下条件筛选：
 
 ```text
-FDV: 50,000 ~ 5,000,000
+FDV: 500,000 ~ 5,000,000
 LP: >= 50,000
 24h Volume: >= 300,000
 Age: >= 48h
+LP/FDV: >= 10%
 ```
 
 其余指标不参与过滤。通过条件后按 `24h Volume` 降序（同分再按 `Liquidity`）取前 `TOP_N`。
@@ -150,7 +152,7 @@ Age: >= 48h
 如果你看到白名单币数很少，优先看 `whitelist.json` 里的 `debug` 字段和启动日志中的：
 
 - `source_counts`：各接口抓到多少候选
-- `reject_counts`：被 `age/liquidity/volume24h/fdv` 哪个条件淘汰
+- `reject_counts`：被 `age/liquidity/volume24h/fdv/lpFdvRatio` 哪个条件淘汰
 
 常见原因：
 
