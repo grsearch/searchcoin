@@ -65,8 +65,8 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - `MIN_POOL_AGE_HOURS`（默认 `48`）
 - `MIN_LIQUIDITY_USD`（默认 `50000`）
 - `MIN_VOLUME_24H_USD`（默认 `300000`）
-- `MIN_FDV_USD`（默认 `50000`）
-- `MAX_FDV_USD`（默认 `5000000`）
+- `MIN_FDV_USD`（默认 `500000`，且最低强制为 `500000`）
+- `MAX_FDV_USD`（默认 `5000000`，且最高强制为 `5000000`）
 - `CANDIDATE_PAGES`（默认 `5`，每个池子列表抓取页数）
 - `FILTER_DEBUG`（默认 `true`，打印拒绝原因统计）
 - 其它指标已移除，不参与筛选与排序
@@ -163,3 +163,6 @@ Age: >= 48h
 ```bash
 CANDIDATE_PAGES=10 TOP_N=80 npm run build:whitelist
 ```
+
+
+> 说明：程序会硬性限制 FDV 在 `500,000 ~ 5,000,000`，即使环境变量误设为更宽范围（例如 `MAX_FDV_USD=Infinity`）也会被夹紧。
