@@ -66,7 +66,9 @@ GECKO_API_KEY=your_key WEBHOOK_URL=https://your-webhook.endpoint npm run run:cyc
 - `MIN_LIQUIDITY_USD`（默认 `50000`）
 - `MIN_VOLUME_24H_USD`（默认 `300000`）
 - `MIN_FDV_USD`（默认 `50000`）
-- `MAX_FDV_USD`（默认 `Infinity`，默认不启用）
+- `MAX_FDV_USD`（默认 `5000000`）
+- `CANDIDATE_PAGES`（默认 `5`，每个池子列表抓取页数）
+- `FILTER_DEBUG`（默认 `true`，打印拒绝原因统计）
 - 其它指标已移除，不参与筛选与排序
 - 其他：`GECKO_API_KEY`、`GECKO_AUTH_MODE`、`NETWORK`、`OUTPUT_PATH`、`BLACKLIST_MINTS`、`QUOTE_MINT`
 
@@ -141,3 +143,23 @@ Age: >= 48h
 
 其余指标不参与过滤。通过条件后按 `24h Volume` 降序（同分再按 `Liquidity`）取前 `TOP_N`。
 
+
+
+## 收录币数量偏少排查
+
+如果你看到白名单币数很少，优先看 `whitelist.json` 里的 `debug` 字段和启动日志中的：
+
+- `source_counts`：各接口抓到多少候选
+- `reject_counts`：被 `age/liquidity/volume24h/fdv` 哪个条件淘汰
+
+常见原因：
+
+1. `MIN_POOL_AGE_HOURS=48` 会过滤掉新池（`new_pools` 大多会被淘汰）
+2. `MAX_FDV_USD=5000000` 会过滤高 FDV 币
+3. 只抓 1 页数据会太少（已支持 `CANDIDATE_PAGES`，默认 5）
+
+可先临时调大：
+
+```bash
+CANDIDATE_PAGES=10 TOP_N=80 npm run build:whitelist
+```

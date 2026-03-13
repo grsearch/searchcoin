@@ -16,6 +16,8 @@ const CONFIG = {
   minFdvUsd: Number(process.env.MIN_FDV_USD ?? 50_000),
   maxFdvUsd: Number(process.env.MAX_FDV_USD ?? 5_000_000),
   requestDelayMs: Number(process.env.REQUEST_DELAY_MS ?? 200),
+  candidatePages: Number(process.env.CANDIDATE_PAGES ?? 5),
+  filterDebug: (process.env.FILTER_DEBUG ?? 'true').toLowerCase() === 'true',
 };
 
 function sleep(ms) {
@@ -35,6 +37,10 @@ function parsePoolAgeHours(createdAt) {
 
 function safeGet(obj, ...keys) {
   return keys.reduce((acc, key) => (acc?.[key] == null ? undefined : acc[key]), obj);
+}
+
+function increaseCounter(map, key) {
+  map[key] = (map[key] ?? 0) + 1;
 }
 
 function withAuth(url) {
@@ -135,23 +141,29 @@ function buildPoolCandidate(pool) {
 }
 
 async function fetchCandidatePools() {
-  const urls = [
-    `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/trending_pools?page=1`,
-    `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/new_pools?page=1`,
-    `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/pools/megafilter?page=1`,
-    `${CONFIG.geckoBaseUrl}/networks/trending_pools?page=1&network=${CONFIG.network}`,
+  const endpoints = [
+    { name: 'trending_pools', build: (page) => `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/trending_pools?page=${page}` },
+    { name: 'megafilter', build: (page) => `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/pools/megafilter?page=${page}` },
+    { name: 'top_pools', build: (page) => `${CONFIG.geckoBaseUrl}/networks/${CONFIG.network}/pools?page=${page}` },
+    { name: 'trending_fallback', build: (page) => `${CONFIG.geckoBaseUrl}/networks/trending_pools?page=${page}&network=${CONFIG.network}` },
   ];
 
   const all = [];
-  for (const url of urls) {
-    try {
-      const data = await fetchJson(url);
-      const pools = Array.isArray(data?.data) ? data.data : [];
-      all.push(...pools.map(buildPoolCandidate));
-    } catch (error) {
-      console.warn(`[warn] failed fetching ${url}: ${error.message}`);
+  const sourceCounts = {};
+  for (const endpoint of endpoints) {
+    for (let page = 1; page <= CONFIG.candidatePages; page += 1) {
+      const url = endpoint.build(page);
+      try {
+        const data = await fetchJson(url);
+        const pools = Array.isArray(data?.data) ? data.data : [];
+        const mapped = pools.map(buildPoolCandidate);
+        all.push(...mapped);
+        sourceCounts[endpoint.name] = (sourceCounts[endpoint.name] ?? 0) + mapped.length;
+      } catch (error) {
+        console.warn(`[warn] failed fetching ${url}: ${error.message}`);
+      }
+      await sleep(CONFIG.requestDelayMs);
     }
-    await sleep(CONFIG.requestDelayMs);
   }
 
   const uniq = new Map();
@@ -159,7 +171,11 @@ async function fetchCandidatePools() {
     if (!c.poolId || !c.baseMint) continue;
     if (!uniq.has(c.poolId)) uniq.set(c.poolId, c);
   }
-  return [...uniq.values()];
+  return {
+    candidates: [...uniq.values()],
+    sourceCounts,
+    rawCount: all.length,
+  };
 }
 
 function getHardFilterFailReason(pool) {
@@ -176,10 +192,24 @@ async function main() {
   }
 
   console.log('[info] fetching candidate pools from CoinGecko Pro /onchain...');
-  const candidates = await fetchCandidatePools();
+  const { candidates, sourceCounts, rawCount } = await fetchCandidatePools();
 
-  const hardPassed = candidates.filter((pool) => getHardFilterFailReason(pool) == null);
-  console.log(`[info] candidates=${candidates.length}, hard_passed=${hardPassed.length}`);
+  const rejectCounts = {};
+  const hardPassed = [];
+  for (const pool of candidates) {
+    const reason = getHardFilterFailReason(pool);
+    if (reason) {
+      increaseCounter(rejectCounts, reason);
+      continue;
+    }
+    hardPassed.push(pool);
+  }
+
+  console.log(`[info] raw_candidates=${rawCount}, dedup_candidates=${candidates.length}, hard_passed=${hardPassed.length}`);
+  if (CONFIG.filterDebug) {
+    console.log(`[debug] source_counts=${JSON.stringify(sourceCounts)}`);
+    console.log(`[debug] reject_counts=${JSON.stringify(rejectCounts)}`);
+  }
 
   const ranked = hardPassed
     .sort((a, b) => {
@@ -230,6 +260,14 @@ async function main() {
       minFdvUsd: CONFIG.minFdvUsd,
       maxFdvUsd: CONFIG.maxFdvUsd,
       rankMode: 'volume_desc_then_liquidity_desc',
+      candidatePages: CONFIG.candidatePages,
+    },
+    debug: {
+      rawCandidates: rawCount,
+      dedupCandidates: candidates.length,
+      hardPassed: hardPassed.length,
+      sourceCounts,
+      rejectCounts,
     },
     whitelist,
   };
