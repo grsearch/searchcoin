@@ -41,6 +41,14 @@
         <div class="card"><div class="label">Generated At</div><div class="value" id="gen" style="font-size:14px">-</div></div>
       </div>
 
+
+      <h2>盈亏统计（按 BUY=1 SOL）</h2>
+      <div class="cards" style="margin-top:0;">
+        <div class="card"><div class="label">Total PnL (All Time)</div><div class="value" id="pnlTotalSection">-</div></div>
+        <div class="card"><div class="label">Backtest PnL 24h</div><div class="value" id="pnl24hSection">-</div></div>
+        <div class="card"><div class="label">BUY / SELL Signals</div><div class="value" id="pnlSignalCount">-</div></div>
+      </div>
+
       <h2>Whitelist</h2>
       <table>
         <thead>
@@ -104,12 +112,26 @@
       }
 
       async function loadPnl() {
-        const res = await fetch('/api/pnl');
-        const data = await res.json();
-        const total = data?.allTime?.totalPnlSol;
-        const backtest24h = data?.last24h?.totalPnlSol;
-        document.getElementById('pnlTotal').textContent = formatSolPnl(total);
-        document.getElementById('pnl24h').textContent = formatSolPnl(backtest24h);
+        try {
+          const res = await fetch('/api/pnl');
+          const data = await res.json();
+          const total = data?.allTime?.totalPnlSol;
+          const backtest24h = data?.last24h?.totalPnlSol;
+          const signalCount = (data?.allTime?.buyCount ?? 0) + (data?.allTime?.sellCount ?? 0);
+
+          document.getElementById('pnlTotal').textContent = formatSolPnl(total);
+          document.getElementById('pnl24h').textContent = formatSolPnl(backtest24h);
+          document.getElementById('pnlTotalSection').textContent = formatSolPnl(total);
+          document.getElementById('pnl24hSection').textContent = formatSolPnl(backtest24h);
+          document.getElementById('pnlSignalCount').textContent = String(signalCount);
+        } catch (error) {
+          document.getElementById('pnlTotal').textContent = 'ERR';
+          document.getElementById('pnl24h').textContent = 'ERR';
+          document.getElementById('pnlTotalSection').textContent = 'ERR';
+          document.getElementById('pnl24hSection').textContent = 'ERR';
+          document.getElementById('pnlSignalCount').textContent = 'ERR';
+          console.error('loadPnl failed:', error);
+        }
       }
 
       async function loadSignals() {
@@ -137,7 +159,7 @@
       }
 
       async function loadAll() {
-        await Promise.all([loadWhitelist(), loadSignals(), loadPnl()]);
+        await Promise.allSettled([loadWhitelist(), loadSignals(), loadPnl()]);
       }
 
       loadAll();
