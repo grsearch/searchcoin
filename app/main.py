@@ -1,8 +1,10 @@
 import asyncio
 import time
+
+import httpx
 from html import escape
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -20,6 +22,15 @@ from app.services import (
 from app.smart_wallets import smart_wallet_report
 from app.engine import SignalEngine, WalletTradeEvent
 from app.discovery import SmartWalletDiscovery
+from app.cluster import (
+    append_trader_signal,
+    auth_ok,
+    load_strategy_wallets,
+    load_trader_signals,
+    normalize_server_role,
+    role_enabled,
+    save_strategy_wallets,
+)
 
 
 class WalletEventIn(BaseModel):
@@ -34,7 +45,21 @@ class WalletEventIn(BaseModel):
 class EvaluateRequest(BaseModel):
     token_mint: str
 
-app = FastAPI(title="SearchCoin Aggregator", version="0.7.0")
+
+class SmartWalletBatchIn(BaseModel):
+    wallets: list[dict]
+    source: str = "scanner"
+
+
+class TraderSignalIn(BaseModel):
+    token_mint: str
+    signal: str
+    reason: str = ""
+    score: float = 0.0
+    contributors: list[str] = Field(default_factory=list)
+
+
+app = FastAPI(title="SearchCoin Aggregator", version="0.8.0")
 clients = ServiceClients()
 engine = SignalEngine(clients)
 discovery = SmartWalletDiscovery()
@@ -44,6 +69,31 @@ refresh_state: dict[str, object] = {
     "last_result": None,
     "runs": 0,
 }
+
+role = normalize_server_role(settings.server_role)
+start_time = int(time.time())
+
+
+async def _relay_json(url: str, payload: dict) -> dict:
+    if not url:
+        return {"ok": False, "error": "target url not configured"}
+    headers = {}
+    if settings.inter_server_shared_token.strip():
+        headers["x-inter-server-token"] = settings.inter_server_shared_token.strip()
+    try:
+        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            text = resp.text
+            if resp.status_code >= 400:
+                return {"ok": False, "status": resp.status_code, "body": text}
+            try:
+                data = resp.json()
+            except Exception:  # noqa: BLE001
+                data = {"raw": text}
+            return {"ok": True, "status": resp.status_code, "data": data}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
 
 
 def _refresh_state_snapshot() -> dict:
@@ -70,15 +120,16 @@ async def _discovery_scheduler() -> None:
 
 @app.on_event("startup")
 async def _startup_discovery() -> None:
-    if settings.smart_wallet_refresh_on_startup:
-        await _refresh_smart_wallet_candidates(persist=True)
-    if settings.smart_wallet_auto_refresh_enabled:
-        asyncio.create_task(_discovery_scheduler())
+    if role_enabled(role, "scanner"):
+        if settings.smart_wallet_refresh_on_startup:
+            await _refresh_smart_wallet_candidates(persist=True)
+        if settings.smart_wallet_auto_refresh_enabled:
+            asyncio.create_task(_discovery_scheduler())
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict:
+    return {"status": "ok", "role": role, "uptime_seconds": int(time.time()) - start_time}
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -265,6 +316,82 @@ async def engine_run_once() -> dict:
         "smart_wallets": smart_wallet_report()["smart_wallets"],
         "decisions": decisions,
     }
+
+
+
+@app.post("/api/scanner/run-once")
+async def scanner_run_once() -> dict:
+    if not role_enabled(role, "scanner"):
+        return {"ok": False, "error": f"role={role} does not run scanner"}
+
+    refreshed = await _refresh_smart_wallet_candidates(persist=True)
+    report = smart_wallet_report() if refreshed.get("ok") else None
+
+    relay = None
+    if report is not None and settings.strategy_ingest_url.strip():
+        relay = await _relay_json(
+            settings.strategy_ingest_url.strip(),
+            {"wallets": report.get("smart_wallets", []), "source": "scanner"},
+        )
+
+    return {
+        "ok": bool(refreshed.get("ok")),
+        "refreshed": refreshed,
+        "relay": relay,
+        "report": report,
+    }
+
+
+@app.post("/api/strategy/smart-wallets/ingest")
+async def strategy_ingest_smart_wallets(payload: SmartWalletBatchIn, x_inter_server_token: str | None = Header(default=None)) -> dict:
+    if not auth_ok(x_inter_server_token):
+        raise HTTPException(status_code=401, detail="invalid inter-server token")
+    save_strategy_wallets(payload.wallets, source=payload.source)
+    return {"ok": True, "count": len(payload.wallets), "source": payload.source}
+
+
+@app.get("/api/strategy/smart-wallets")
+async def strategy_get_smart_wallets() -> dict:
+    wallets = load_strategy_wallets()
+    return {"ok": True, "count": len(wallets), "wallets": wallets}
+
+
+@app.post("/api/strategy/evaluate-and-forward")
+async def strategy_evaluate_and_forward(payload: EvaluateRequest) -> dict:
+    if not role_enabled(role, "strategy"):
+        return {"ok": False, "error": f"role={role} does not run strategy"}
+
+    decision = await engine.evaluate_token(payload.token_mint)
+    relay = None
+    if decision.signal in {"buy", "sell"} and settings.trader_signal_url.strip():
+        relay = await _relay_json(
+            settings.trader_signal_url.strip(),
+            {
+                "token_mint": decision.token_mint,
+                "signal": decision.signal,
+                "reason": decision.reason,
+                "score": decision.score,
+                "contributors": decision.contributors,
+            },
+        )
+
+    return {"ok": True, "decision": decision.__dict__, "relay": relay}
+
+
+@app.post("/api/trader/signal")
+async def trader_signal(payload: TraderSignalIn, x_inter_server_token: str | None = Header(default=None)) -> dict:
+    if not auth_ok(x_inter_server_token):
+        raise HTTPException(status_code=401, detail="invalid inter-server token")
+    signal = payload.model_dump()
+    signal["received_at"] = int(time.time())
+    append_trader_signal(signal)
+    return {"ok": True, "signal": signal}
+
+
+@app.get("/api/trader/signals")
+async def trader_signals() -> dict:
+    signals = load_trader_signals()
+    return {"ok": True, "count": len(signals), "signals": signals[-100:]}
 
 @app.get("/token/{mint}", response_model=AggregatedTokenResponse)
 async def token_summary(mint: str) -> AggregatedTokenResponse:

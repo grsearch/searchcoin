@@ -124,6 +124,31 @@ curl -X POST "http://localhost:8000/engine/evaluate" -H "Content-Type: applicati
 
 
 
+
+## 三服务器部署模式（24小时稳定运行推荐）
+
+可将系统拆成 3 个角色分别部署：
+
+1. **Scanner 服务器**（`SERVER_ROLE=scanner`）
+   - 负责 `smart-wallet` 发现与评分
+   - 定时执行发现流程
+   - 调用 `POST /api/scanner/run-once`
+   - 可把白名单转发到策略服（`STRATEGY_INGEST_URL`）
+
+2. **Strategy 服务器**（`SERVER_ROLE=strategy`）
+   - 接收白名单：`POST /api/strategy/smart-wallets/ingest`
+   - 监控事件并判定信号：`POST /api/strategy/evaluate-and-forward`
+   - 可将买卖信号转发到交易服（`TRADER_SIGNAL_URL`）
+
+3. **Trader 服务器**（`SERVER_ROLE=trader`）
+   - 接收策略信号：`POST /api/trader/signal`
+   - 查询最近信号：`GET /api/trader/signals`
+
+跨服务器认证：
+
+- 在三台服务器统一设置 `INTER_SERVER_SHARED_TOKEN`
+- 转发时自动带 `x-inter-server-token` 请求头
+
 ## 自动扫链/监控/信号/自动交易（MVP 流程）
 
 当前实现的最小闭环：

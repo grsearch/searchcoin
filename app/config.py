@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     smart_wallet_refresh_interval_seconds: int = 3600
     smart_wallet_refresh_on_startup: bool = True
 
+    # 3-server deployment mode: all | scanner | strategy | trader
+    server_role: str = "all"
+    strategy_ingest_url: str = ""
+    trader_signal_url: str = ""
+    inter_server_shared_token: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
