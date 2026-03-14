@@ -8,12 +8,68 @@ import httpx
 from app.config import settings
 
 BASE58_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+WALLET_FIELD_HINTS = {
+    "wallet",
+    "walletaddress",
+    "wallet_address",
+    "owner",
+    "owneraddress",
+    "owner_address",
+    "trader",
+    "traderaddress",
+    "trader_address",
+    "maker",
+    "makeraddress",
+    "maker_address",
+    "user",
+    "useraddress",
+    "user_address",
+    "signer",
+    "from",
+    "to",
+}
+TOKEN_FIELD_HINTS = {
+    "mint",
+    "token",
+    "tokenaddress",
+    "token_address",
+    "address",
+    "pairaddress",
+    "pair_address",
+    "symbol",
+}
+
+
+def _normalize_key(value: str) -> str:
+    return value.strip().replace("-", "_").lower()
+
+
+def _looks_like_wallet_key(key: str) -> bool:
+    key_norm = _normalize_key(key)
+    if key_norm in TOKEN_FIELD_HINTS:
+        return False
+    if key_norm in WALLET_FIELD_HINTS:
+        return True
+    return key_norm.endswith("_wallet") or key_norm.endswith("wallet") or key_norm.endswith("_owner")
+
+
+def _add_wallet_candidate(value: str, out: set[str]) -> None:
+    candidate = value.strip()
+    if not BASE58_RE.match(candidate):
+        return
+    # Pump.fun style mint addresses frequently end with "pump" and are not wallet addresses.
+    if candidate.lower().endswith("pump"):
+        return
+    out.add(candidate)
 
 
 def _extract_base58_wallets(payload: Any, out: set[str]) -> None:
     if isinstance(payload, dict):
-        for _, value in payload.items():
-            _extract_base58_wallets(value, out)
+        for key, value in payload.items():
+            if isinstance(value, str) and _looks_like_wallet_key(str(key)):
+                _add_wallet_candidate(value, out)
+            else:
+                _extract_base58_wallets(value, out)
         return
 
     if isinstance(payload, list):
@@ -22,9 +78,8 @@ def _extract_base58_wallets(payload: Any, out: set[str]) -> None:
         return
 
     if isinstance(payload, str):
-        value = payload.strip()
-        if BASE58_RE.match(value):
-            out.add(value)
+        # Do not treat raw strings as wallets without field context; this avoids mint false positives.
+        return
 
 
 class SmartWalletDiscovery:

@@ -6,6 +6,7 @@ def test_extract_base58_wallets_from_nested_payload():
     payload = {
         "a": [
             {"wallet": "So11111111111111111111111111111111111111112"},
+            {"address": "5dfHpiBxagAKGUMLpCM246qHb8i8gADE3xdpVnDKpump"},
             {"not_wallet": "hello"},
         ],
         "b": {"owner": "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2"},
@@ -13,6 +14,7 @@ def test_extract_base58_wallets_from_nested_payload():
     _extract_base58_wallets(payload, out)
     assert "So11111111111111111111111111111111111111112" in out
     assert "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2" in out
+    assert "5dfHpiBxagAKGUMLpCM246qHb8i8gADE3xdpVnDKpump" not in out
 
 
 def test_build_candidate_rows_sorted_and_limited():

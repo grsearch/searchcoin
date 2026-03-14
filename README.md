@@ -273,3 +273,7 @@ score =
 3. 若仍缺失统计，则自动填充 proxy 统计（可评分），并在刷新结果中标记 `proxy_stats_rows`
 
 这样可以保证“发现 -> 排名 -> 白名单”流程不中断。
+发现逻辑说明（已修正）：
+
+- 仅从钱包语义字段提取候选地址（如 `wallet`/`owner`/`trader`/`maker`），不再把 token mint 字段当作钱包。
+- 自动过滤典型 Pump.fun mint（`...pump`）以降低误识别。
