@@ -1,4 +1,10 @@
-from app.services import parse_birdeye_price, parse_helius_asset, parse_jupiter_quote, validate_mint
+from app.services import (
+    jupiter_quote_url,
+    parse_birdeye_price,
+    parse_helius_asset,
+    parse_jupiter_quote,
+    validate_mint,
+)
 
 
 def test_validate_mint():
@@ -25,3 +31,7 @@ def test_parse_birdeye_price():
 def test_parse_jupiter_quote():
     result = parse_jupiter_quote({"inAmount": "1000000000", "outAmount": "160100000"}, input_decimals=9)
     assert result["price_usd_estimate"] == 160.1
+
+
+def test_jupiter_quote_url_is_new_v1_endpoint():
+    assert jupiter_quote_url().endswith("/swap/v1/quote")

@@ -22,6 +22,19 @@ def _require_api_key(service_name: str, key: str) -> None:
         raise UpstreamError(f"{service_name} API key is not configured")
 
 
+def jupiter_quote_url() -> str:
+    return f"{settings.jupiter_base_url.rstrip('/')}/swap/v1/quote"
+
+
+def jupiter_swap_url() -> str:
+    return f"{settings.jupiter_base_url.rstrip('/')}/swap/v1/swap"
+
+
+def jupiter_headers() -> dict[str, str]:
+    _require_api_key("Jupiter", settings.jupiter_api_key)
+    return {"x-api-key": settings.jupiter_api_key}
+
+
 @dataclass
 class ServiceClients:
     timeout: float = settings.request_timeout_seconds
@@ -66,18 +79,20 @@ class ServiceClients:
         return value
 
     async def jupiter_quote(self, mint: str, input_amount: int) -> dict[str, Any]:
-        url = "https://quote-api.jup.ag/v6/quote"
+        url = jupiter_quote_url()
         params = {
             "inputMint": mint,
             "outputMint": settings.usdc_mint,
             "amount": input_amount,
             "slippageBps": 50,
-            "onlyDirectRoutes": False,
         }
+        headers = jupiter_headers()
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(url, params=params)
+            response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()
             data = response.json()
+
         if data.get("error"):
             raise UpstreamError(str(data["error"]))
         return data

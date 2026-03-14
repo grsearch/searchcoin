@@ -4,7 +4,7 @@
 
 - **Helius**：代币基础信息（符号、名称、图片、供应量等）
 - **Birdeye**：当前 DeFi 价格与 24h 变化
-- **Jupiter**：用 1 个代币换 USDC 的路由报价（用于交叉验证）
+- **Jupiter Pro**：用 1 个代币换 USDC 的路由报价（`https://api.jup.ag/swap/v1/quote` + `x-api-key`）
 
 同时提供 Dashboard 页面，展示：
 
@@ -42,7 +42,7 @@ cp .env.example .env
 
 说明：
 
-- `HELIUS_API_KEY`、`BIRDEYE_API_KEY` **用于 `/token/{mint}` 聚合接口**。
+- `HELIUS_API_KEY`、`BIRDEYE_API_KEY`、`JUPITER_API_KEY` **用于 `/token/{mint}` 聚合接口**。
 - Dashboard (`/dashboard`、`/api/dashboard`) 与 smart wallet scoring 可在无 API key 下工作（用本地 JSON）。
 
 可选项：
@@ -53,6 +53,7 @@ cp .env.example .env
 - `REQUEST_TIMEOUT_SECONDS`（默认 `10`）
 - `DASHBOARD_DATA_FILE`（默认 `data/dashboard.json`）
 - `SMART_WALLETS_DATA_FILE`（默认 `data/smart_wallets.json`）
+- `JUPITER_BASE_URL`（默认 `https://api.jup.ag`）
 
 ### 3) 维护 Dashboard 数据
 
@@ -121,6 +122,28 @@ curl "http://localhost:8000/api/smart-wallets"
 浏览器打开：
 
 - `http://localhost:8000/dashboard`
+
+
+## Jupiter Pro I 关键配置
+
+当前实现已切换到 Jupiter 新版 Pro 接口：
+
+- Quote: `GET https://api.jup.ag/swap/v1/quote`
+- Swap: `POST https://api.jup.ag/swap/v1/swap`（本仓库当前仅用 quote）
+- 必须在请求头携带：`x-api-key: <JUPITER_API_KEY>`
+
+如果你遇到域名解析错误，请先在服务器本机排查：
+
+```bash
+nslookup api.jup.ag
+curl -I https://api.jup.ag/swap/v1/quote
+```
+
+判断：
+
+- `nslookup` 失败：DNS 问题
+- `nslookup` 成功但 `curl` 失败：出网/TLS/防火墙问题
+- 两者都成功：通常是代码还在请求旧域名或没带 `x-api-key`
 
 ## Smart Wallet 评分模型（实战版）
 
