@@ -10,41 +10,93 @@ from app.discovery import (
     _token_row_passes_seed_filters,
     _extract_token_age_hours,
     _extract_token_fdv_usd,
+    _extract_token_lp_usd,
+    _extract_token_lp_burned_ratio,
 )
 
 
 
-def test_extract_token_age_and_fdv_helpers():
-    row = {"age": 2, "fdv": "1,500,000"}
+def test_extract_token_age_fdv_lp_helpers():
+    row = {"age": 2, "fdv": "1,500,000", "liquidity": 250_000, "lp_burned_percent": 100}
     assert _extract_token_age_hours(row) == 2
     assert _extract_token_fdv_usd(row) == 1_500_000
+    assert _extract_token_lp_usd(row) == 250_000
+    assert _extract_token_lp_burned_ratio(row) == 1.0
 
     row_days = {"age_days": 2}
     assert _extract_token_age_hours(row_days) == 48
 
 
 def test_token_row_passes_seed_filters():
-    ok_row = {"age": 30, "fdv": 1_000_001}
-    ok, reason = _token_row_passes_seed_filters(ok_row, min_age_hours=24, max_age_hours=14 * 24, min_fdv_usd=1_000_000)
+    ok_row = {"age": 30, "fdv": 2_000_000, "liquidity": 300_000, "lp_burned_percent": 100}
+    ok, reason = _token_row_passes_seed_filters(
+        ok_row,
+        min_age_hours=24,
+        max_age_hours=14 * 24,
+        min_fdv_usd=1_000_000,
+        min_lp_to_fdv_ratio=0.10,
+        min_lp_burned_ratio=1.0,
+    )
     assert ok and reason == "accepted"
 
-    too_new, reason = _token_row_passes_seed_filters({"age": 12, "fdv": 2_000_000}, min_age_hours=24, max_age_hours=14 * 24, min_fdv_usd=1_000_000)
+    too_new, reason = _token_row_passes_seed_filters(
+        {"age": 12, "fdv": 2_000_000, "liquidity": 300_000, "lp_burned_percent": 100},
+        min_age_hours=24,
+        max_age_hours=14 * 24,
+        min_fdv_usd=1_000_000,
+        min_lp_to_fdv_ratio=0.10,
+        min_lp_burned_ratio=1.0,
+    )
     assert not too_new and reason == "age_too_low"
 
-    too_old, reason = _token_row_passes_seed_filters({"age": 400, "fdv": 2_000_000}, min_age_hours=24, max_age_hours=14 * 24, min_fdv_usd=1_000_000)
+    too_old, reason = _token_row_passes_seed_filters(
+        {"age": 400, "fdv": 2_000_000, "liquidity": 300_000, "lp_burned_percent": 100},
+        min_age_hours=24,
+        max_age_hours=14 * 24,
+        min_fdv_usd=1_000_000,
+        min_lp_to_fdv_ratio=0.10,
+        min_lp_burned_ratio=1.0,
+    )
     assert not too_old and reason == "age_too_high"
 
-    low_fdv, reason = _token_row_passes_seed_filters({"age": 48, "fdv": 900_000}, min_age_hours=24, max_age_hours=14 * 24, min_fdv_usd=1_000_000)
+    low_fdv, reason = _token_row_passes_seed_filters(
+        {"age": 48, "fdv": 900_000, "liquidity": 300_000, "lp_burned_percent": 100},
+        min_age_hours=24,
+        max_age_hours=14 * 24,
+        min_fdv_usd=1_000_000,
+        min_lp_to_fdv_ratio=0.10,
+        min_lp_burned_ratio=1.0,
+    )
     assert not low_fdv and reason == "fdv_too_low"
+
+    low_lp_ratio, reason = _token_row_passes_seed_filters(
+        {"age": 48, "fdv": 2_000_000, "liquidity": 150_000, "lp_burned_percent": 100},
+        min_age_hours=24,
+        max_age_hours=14 * 24,
+        min_fdv_usd=1_000_000,
+        min_lp_to_fdv_ratio=0.10,
+        min_lp_burned_ratio=1.0,
+    )
+    assert not low_lp_ratio and reason == "lp_to_fdv_too_low"
+
+    low_lp_burned, reason = _token_row_passes_seed_filters(
+        {"age": 48, "fdv": 2_000_000, "liquidity": 300_000, "lp_burned_percent": 95},
+        min_age_hours=24,
+        max_age_hours=14 * 24,
+        min_fdv_usd=1_000_000,
+        min_lp_to_fdv_ratio=0.10,
+        min_lp_burned_ratio=1.0,
+    )
+    assert not low_lp_burned and reason == "lp_burned_too_low"
 
 
 def test_extract_token_mints_from_token_rows_applies_age_and_fdv_filters():
     out = set()
     payload = {
         "data": [
-            {"token": "So11111111111111111111111111111111111111112", "age": 12, "fdv": 2_000_000},
-            {"token": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "age": 48, "fdv": 500_000},
-            {"token": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", "age": 48, "fdv": 2_000_000},
+            {"token": "So11111111111111111111111111111111111111112", "age": 12, "fdv": 2_000_000, "liquidity": 300_000, "lp_burned_percent": 100},
+            {"token": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "age": 48, "fdv": 500_000, "liquidity": 300_000, "lp_burned_percent": 100},
+            {"token": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", "age": 48, "fdv": 2_000_000, "liquidity": 250_000, "lp_burned_percent": 100},
         ]
     }
     _, stats = _extract_token_mints_from_token_rows(payload, out)
@@ -53,6 +105,22 @@ def test_extract_token_mints_from_token_rows_applies_age_and_fdv_filters():
     assert "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" not in out
     assert stats["rejected_age_too_low"] == 1
     assert stats["rejected_fdv_too_low"] == 1
+
+
+def test_extract_token_mints_from_token_rows_applies_lp_filters():
+    out = set()
+    payload = {
+        "data": [
+            {"token": "So11111111111111111111111111111111111111112", "age": 48, "fdv": 2_000_000, "liquidity": 150_000, "lp_burned_percent": 100},
+            {"token": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "age": 48, "fdv": 2_000_000, "liquidity": 300_000, "lp_burned_percent": 95},
+            {"token": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", "age": 48, "fdv": 2_000_000, "liquidity": 300_000, "lp_burned_percent": 100},
+        ]
+    }
+    _, stats = _extract_token_mints_from_token_rows(payload, out)
+    assert "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN" in out
+    assert stats["rejected_lp_to_fdv_too_low"] == 1
+    assert stats["rejected_lp_burned_too_low"] == 1
+
 
 
 def test_extract_base58_wallets_from_nested_payload():

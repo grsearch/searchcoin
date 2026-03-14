@@ -183,15 +183,63 @@ def _extract_token_fdv_usd(row: dict[str, Any]) -> float | None:
     return None
 
 
+def _extract_token_lp_usd(row: dict[str, Any]) -> float | None:
+    for key in ("liquidity", "liquidity_usd", "lp_usd", "lp", "liquidityUsd"):
+        val = _to_float(row.get(key))
+        if val is not None:
+            return val
+    return None
+
+
+def _extract_token_lp_burned_ratio(row: dict[str, Any]) -> float | None:
+    burn_keys = (
+        "lp_burned_percent",
+        "lpBurnedPercent",
+        "lp_burn_percent",
+        "lpBurnPercent",
+        "burned_percent",
+        "burnedPercent",
+        "lp_burned_ratio",
+        "lpBurnedRatio",
+        "lp_burn_ratio",
+        "lpBurnRatio",
+    )
+    for key in burn_keys:
+        val = _to_float(row.get(key))
+        if val is None:
+            continue
+        # percent-like values may arrive as 100 or 100.0
+        if val > 1.0:
+            return val / 100.0
+        return val
+
+    burned_flag_keys = ("lp_burned", "lpBurned", "is_lp_burned", "isLpBurned")
+    for key in burned_flag_keys:
+        val = row.get(key)
+        if isinstance(val, bool):
+            return 1.0 if val else 0.0
+        if isinstance(val, str):
+            v = val.strip().lower()
+            if v in {"true", "yes", "1", "burned"}:
+                return 1.0
+            if v in {"false", "no", "0"}:
+                return 0.0
+    return None
+
+
 def _token_row_passes_seed_filters(
     row: dict[str, Any],
     *,
     min_age_hours: float,
     max_age_hours: float,
     min_fdv_usd: float,
+    min_lp_to_fdv_ratio: float,
+    min_lp_burned_ratio: float,
 ) -> tuple[bool, str]:
     age_hours = _extract_token_age_hours(row)
     fdv_usd = _extract_token_fdv_usd(row)
+    lp_usd = _extract_token_lp_usd(row)
+    lp_burned_ratio = _extract_token_lp_burned_ratio(row)
 
     if age_hours is not None and age_hours < min_age_hours:
         return False, "age_too_low"
@@ -199,6 +247,15 @@ def _token_row_passes_seed_filters(
         return False, "age_too_high"
     if fdv_usd is not None and fdv_usd < min_fdv_usd:
         return False, "fdv_too_low"
+    if (
+        lp_usd is not None
+        and fdv_usd is not None
+        and fdv_usd > 0
+        and (lp_usd / fdv_usd) < min_lp_to_fdv_ratio
+    ):
+        return False, "lp_to_fdv_too_low"
+    if lp_burned_ratio is not None and lp_burned_ratio < min_lp_burned_ratio:
+        return False, "lp_burned_too_low"
     return True, "accepted"
 
 
@@ -258,6 +315,8 @@ def _extract_token_mints_from_token_rows(
     min_age_hours: float = 24.0,
     max_age_hours: float = 14.0 * 24.0,
     min_fdv_usd: float = 1_000_000.0,
+    min_lp_to_fdv_ratio: float = 0.10,
+    min_lp_burned_ratio: float = 1.0,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     """Direct extraction for token-seed endpoints, bypassing token-entity heuristics."""
     stats = {
@@ -268,6 +327,8 @@ def _extract_token_mints_from_token_rows(
         "rejected_age_too_low": 0,
         "rejected_age_too_high": 0,
         "rejected_fdv_too_low": 0,
+        "rejected_lp_to_fdv_too_low": 0,
+        "rejected_lp_burned_too_low": 0,
     }
     debug: dict[str, Any] = {
         "sample_row_keys": [],
@@ -314,6 +375,8 @@ def _extract_token_mints_from_token_rows(
             min_age_hours=min_age_hours,
             max_age_hours=max_age_hours,
             min_fdv_usd=min_fdv_usd,
+            min_lp_to_fdv_ratio=min_lp_to_fdv_ratio,
+            min_lp_burned_ratio=min_lp_burned_ratio,
         )
         if not ok:
             stats[f"rejected_{reason}"] += 1
