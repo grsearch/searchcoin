@@ -88,6 +88,34 @@ def test_extract_token_mints_from_smart_money_token_key_payload():
     assert "63nb8TihiGToYCMxdKrbMyJ8qshZtxx2Q1pgaqM9pump" in out
 
 
+def test_extract_token_mints_with_stats_counts():
+    out = set()
+    stats = {
+        "rows_seen": 0,
+        "tokens_extracted": 0,
+        "accepted_mints": 0,
+        "rejected_non_base58": 0,
+    }
+    payload = {
+        "data": [
+            {
+                "token": "63nb8TihiGToYCMxdKrbMyJ8qshZtxx2Q1pgaqM9pump",
+                "symbol": "Solmoji",
+                "price": 0.0000025,
+            },
+            {
+                "token": "bad-token-with-dash",
+                "symbol": "Bad",
+                "price": 1.0,
+            },
+        ]
+    }
+    _extract_token_mints(payload, out, stats=stats)
+    assert stats["tokens_extracted"] >= 2
+    assert stats["accepted_mints"] >= 1
+    assert stats["rejected_non_base58"] >= 1
+
+
 def test_extract_token_mints_from_tokenish_address_rows():
     out = set()
     payload = {

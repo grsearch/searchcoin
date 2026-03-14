@@ -117,38 +117,53 @@ def _add_wallet_candidate(value: str, out: set[str]) -> None:
     out.add(candidate)
 
 
-def _extract_token_mints(payload: Any, out: set[str], parent_key: str = "") -> None:
+def _extract_token_mints(
+    payload: Any,
+    out: set[str],
+    parent_key: str = "",
+    stats: dict[str, int] | None = None,
+) -> None:
+    if stats is None:
+        stats = {
+            "rows_seen": 0,
+            "tokens_extracted": 0,
+            "accepted_mints": 0,
+            "rejected_non_base58": 0,
+        }
+
+    def _record_candidate(candidate: str) -> None:
+        stats["tokens_extracted"] = stats.get("tokens_extracted", 0) + 1
+        if BASE58_RE.match(candidate):
+            out.add(candidate)
+            stats["accepted_mints"] = stats.get("accepted_mints", 0) + 1
+        else:
+            stats["rejected_non_base58"] = stats.get("rejected_non_base58", 0) + 1
+
     if isinstance(payload, dict):
+        stats["rows_seen"] = stats.get("rows_seen", 0) + 1
         tokenish = _dict_looks_like_token_entity(payload)
         for key, value in payload.items():
             key_norm = _normalize_key(str(key))
             if isinstance(value, str) and (key_norm in TOKEN_MINT_HINTS or key_norm.endswith("mint")):
-                candidate = value.strip()
-                if BASE58_RE.match(candidate):
-                    out.add(candidate)
+                _record_candidate(value.strip())
             elif isinstance(value, str) and key_norm == "address" and tokenish:
-                candidate = value.strip()
-                if BASE58_RE.match(candidate):
-                    out.add(candidate)
+                _record_candidate(value.strip())
             elif isinstance(value, str) and key_norm == "token" and tokenish:
-                candidate = value.strip()
-                if BASE58_RE.match(candidate):
-                    out.add(candidate)
+                _record_candidate(value.strip())
             else:
-                _extract_token_mints(value, out, parent_key=key_norm)
+                _extract_token_mints(value, out, parent_key=key_norm, stats=stats)
         return
 
     if isinstance(payload, list):
+        stats["rows_seen"] = stats.get("rows_seen", 0) + len(payload)
         for item in payload:
-            _extract_token_mints(item, out, parent_key=parent_key)
+            _extract_token_mints(item, out, parent_key=parent_key, stats=stats)
         return
 
     if isinstance(payload, str):
         # Some endpoints return plain mint arrays.
         if parent_key in {"mints", "tokens", "token_mints"}:
-            candidate = payload.strip()
-            if BASE58_RE.match(candidate):
-                out.add(candidate)
+            _record_candidate(payload.strip())
 
 
 def _extract_base58_wallets(payload: Any, out: set[str], parent_key: str = "") -> None:
@@ -257,12 +272,33 @@ class SmartWalletDiscovery:
                             debug_steps.append(step)
                             continue
                         data = resp.json()
+                        step["raw_data_type"] = type(data).__name__
+                        if isinstance(data, dict):
+                            payload_data = data.get("data")
+                            step["raw_data_len"] = len(payload_data) if isinstance(payload_data, list) else None
+                            if isinstance(payload_data, list) and payload_data:
+                                first = payload_data[0]
+                                if isinstance(first, dict):
+                                    step["sample_keys"] = list(first.keys())[:10]
+                                    step["sample_token"] = (
+                                        first.get("token")
+                                        or first.get("mint")
+                                        or first.get("token_address")
+                                        or first.get("address")
+                                    )
                         if isinstance(data, dict):
                             step["api_success"] = data.get("success")
                             if data.get("message"):
                                 step["api_message"] = str(data.get("message"))
                         before_mints = len(token_mints)
-                        _extract_token_mints(data, token_mints)
+                        extract_stats = {
+                            "rows_seen": 0,
+                            "tokens_extracted": 0,
+                            "accepted_mints": 0,
+                            "rejected_non_base58": 0,
+                        }
+                        _extract_token_mints(data, token_mints, stats=extract_stats)
+                        step.update(extract_stats)
                         step["mints_found_delta"] = len(token_mints) - before_mints
                         step["mints_found_total"] = len(token_mints)
                         debug_steps.append(step)

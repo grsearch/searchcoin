@@ -282,6 +282,7 @@ score =
 - token seed 提取支持 `data[].token`（如 `smart-money/v1/token/list` 返回结构）以及 `mint/token_address/address` 变体。
 - top traders 查询默认使用文档主参数 `address`（并带 `limit`），避免错误参数造成 400。
 - `GET /discovery/candidates` 与 `POST /api/smart-wallets/refresh` 会返回 `discovery_debug`，可直接看到每个上游端点状态码与每一步提取数量，便于定位“权限问题 / 空数据窗口 / 字段变更”。
+- `discovery_debug` 里还会包含 `raw_data_type/raw_data_len/sample_keys/sample_token` 以及 `rows_seen/tokens_extracted/accepted_mints/rejected_non_base58`，用于判断“提取失败”还是“被校验过滤”。
 - scanner 角色每次刷新也会把 `discovery_debug` 关键字段打到日志，便于用 `journalctl -u searchcoin-scanner -f` 实时排障。
 
 此外，`/token/{mint}` 的 Birdeye 价格请求现在严格使用 `BIRDEYE_BASE_URL`（默认 `https://public-api.birdeye.so`）拼接 `/defi/price`，避免环境里误用旧域名。
