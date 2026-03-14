@@ -17,6 +17,39 @@ def test_extract_base58_wallets_from_nested_payload():
     assert "5dfHpiBxagAKGUMLpCM246qHb8i8gADE3xdpVnDKpump" not in out
 
 
+def test_extract_wallets_from_address_rows_with_metrics():
+    out = set()
+    payload = {
+        "data": [
+            {
+                "address": "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2",
+                "pnl_30d": 1234,
+                "tradeCount": 9,
+            },
+            {
+                "address": "So11111111111111111111111111111111111111112",
+                "symbol": "SOL",
+            },
+        ]
+    }
+    _extract_base58_wallets(payload, out)
+    assert "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2" in out
+    assert "So11111111111111111111111111111111111111112" not in out
+
+
+def test_extract_wallets_from_wallet_list_strings():
+    out = set()
+    payload = {
+        "wallets": [
+            "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2",
+            "5dfHpiBxagAKGUMLpCM246qHb8i8gADE3xdpVnDKpump",
+        ]
+    }
+    _extract_base58_wallets(payload, out)
+    assert "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2" in out
+    assert "5dfHpiBxagAKGUMLpCM246qHb8i8gADE3xdpVnDKpump" not in out
+
+
 def test_build_candidate_rows_sorted_and_limited():
     service = SmartWalletDiscovery()
     stats = {

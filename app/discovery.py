@@ -53,6 +53,36 @@ def _looks_like_wallet_key(key: str) -> bool:
     return key_norm.endswith("_wallet") or key_norm.endswith("wallet") or key_norm.endswith("_owner")
 
 
+def _dict_looks_like_wallet_entity(payload: dict[str, Any]) -> bool:
+    keys = {_normalize_key(str(k)) for k in payload.keys()}
+    if not keys:
+        return False
+
+    # Strong wallet hints
+    if keys & WALLET_FIELD_HINTS:
+        return True
+
+    # Objects with an address + trading/performance metrics are likely wallet rows.
+    has_address = "address" in keys
+    metric_hints = {
+        "pnl",
+        "pnl_7d",
+        "pnl_30d",
+        "volume",
+        "trade",
+        "tradecount",
+        "swapcount",
+        "winrate",
+        "profit",
+    }
+    has_metric = any(any(h in k for h in metric_hints) for k in keys)
+
+    # If object clearly looks like token metadata, do not treat as wallet.
+    looks_tokenish = "mint" in keys or "symbol" in keys or "token_address" in keys or "tokenaddress" in keys
+
+    return has_address and has_metric and not looks_tokenish
+
+
 def _add_wallet_candidate(value: str, out: set[str]) -> None:
     candidate = value.strip()
     if not BASE58_RE.match(candidate):
@@ -63,22 +93,28 @@ def _add_wallet_candidate(value: str, out: set[str]) -> None:
     out.add(candidate)
 
 
-def _extract_base58_wallets(payload: Any, out: set[str]) -> None:
+def _extract_base58_wallets(payload: Any, out: set[str], parent_key: str = "") -> None:
     if isinstance(payload, dict):
+        treat_address_as_wallet = _dict_looks_like_wallet_entity(payload)
         for key, value in payload.items():
-            if isinstance(value, str) and _looks_like_wallet_key(str(key)):
+            key_str = str(key)
+            if isinstance(value, str) and (
+                _looks_like_wallet_key(key_str) or (_normalize_key(key_str) == "address" and treat_address_as_wallet)
+            ):
                 _add_wallet_candidate(value, out)
             else:
-                _extract_base58_wallets(value, out)
+                _extract_base58_wallets(value, out, parent_key=key_str)
         return
 
     if isinstance(payload, list):
         for item in payload:
-            _extract_base58_wallets(item, out)
+            _extract_base58_wallets(item, out, parent_key=parent_key)
         return
 
     if isinstance(payload, str):
-        # Do not treat raw strings as wallets without field context; this avoids mint false positives.
+        # Accept raw string only when parent key semantically indicates wallet lists.
+        if _looks_like_wallet_key(parent_key):
+            _add_wallet_candidate(payload, out)
         return
 
 

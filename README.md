@@ -277,3 +277,4 @@ score =
 
 - 仅从钱包语义字段提取候选地址（如 `wallet`/`owner`/`trader`/`maker`），不再把 token mint 字段当作钱包。
 - 自动过滤典型 Pump.fun mint（`...pump`）以降低误识别。
+- 对 `address` 字段采用上下文判断：若同一对象包含交易/收益指标（如 pnl/tradeCount/volume），会识别为钱包；若是 token 元数据（如 symbol/mint）则忽略。
