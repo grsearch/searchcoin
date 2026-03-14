@@ -84,6 +84,28 @@ def _dict_looks_like_wallet_entity(payload: dict[str, Any]) -> bool:
     return has_address and has_metric and not looks_tokenish
 
 
+def _dict_looks_like_token_entity(payload: dict[str, Any]) -> bool:
+    keys = {_normalize_key(str(k)) for k in payload.keys()}
+    if "address" not in keys:
+        return False
+
+    token_hints = {
+        "symbol",
+        "name",
+        "price",
+        "price_usd",
+        "liquidity",
+        "marketcap",
+        "market_cap",
+        "volume",
+        "decimals",
+    }
+    wallet_hints = WALLET_FIELD_HINTS | {"pnl", "tradecount", "winrate", "profit"}
+    has_token_hint = any(any(h in k for h in token_hints) for k in keys)
+    has_wallet_hint = any(any(h in k for h in wallet_hints) for k in keys)
+    return has_token_hint and not has_wallet_hint
+
+
 def _add_wallet_candidate(value: str, out: set[str]) -> None:
     candidate = value.strip()
     if not BASE58_RE.match(candidate):
@@ -96,9 +118,14 @@ def _add_wallet_candidate(value: str, out: set[str]) -> None:
 
 def _extract_token_mints(payload: Any, out: set[str], parent_key: str = "") -> None:
     if isinstance(payload, dict):
+        tokenish = _dict_looks_like_token_entity(payload)
         for key, value in payload.items():
             key_norm = _normalize_key(str(key))
             if isinstance(value, str) and (key_norm in TOKEN_MINT_HINTS or key_norm.endswith("mint")):
+                candidate = value.strip()
+                if BASE58_RE.match(candidate):
+                    out.add(candidate)
+            elif isinstance(value, str) and key_norm == "address" and tokenish:
                 candidate = value.strip()
                 if BASE58_RE.match(candidate):
                     out.add(candidate)
@@ -240,38 +267,48 @@ class SmartWalletDiscovery:
 
                 top_traders_url = f"{base}/defi/v2/tokens/top_traders"
                 for mint in list(token_mints)[: safe_limit]:
-                    try:
-                        resp = await client.get(
-                            top_traders_url,
-                            headers=self._headers(),
-                            params={"address": mint, "limit": safe_limit},
-                        )
-                        step = {
-                            "stage": "top_traders_per_mint",
-                            "url": top_traders_url,
-                            "mint": mint,
-                            "status_code": resp.status_code,
-                        }
-                        if resp.status_code >= 400:
-                            debug_steps.append(step)
-                            continue
-                        data = resp.json()
-                        before_wallets = len(wallets)
-                        _extract_base58_wallets(data, wallets)
-                        step["wallets_found_delta"] = len(wallets) - before_wallets
-                        step["wallets_found_total"] = len(wallets)
-                        debug_steps.append(step)
-                    except Exception as exc:  # noqa: BLE001
-                        debug_steps.append(
-                            {
+                    param_candidates = [
+                        {"address": mint, "limit": safe_limit},
+                        {"token_address": mint, "limit": safe_limit},
+                        {"mint": mint, "limit": safe_limit},
+                    ]
+                    for query in param_candidates:
+                        try:
+                            resp = await client.get(
+                                top_traders_url,
+                                headers=self._headers(),
+                                params=query,
+                            )
+                            step = {
                                 "stage": "top_traders_per_mint",
                                 "url": top_traders_url,
                                 "mint": mint,
-                                "error": str(exc),
+                                "query": query,
+                                "status_code": resp.status_code,
                             }
-                        )
-                        last_error = exc
-                        continue
+                            if resp.status_code >= 400:
+                                debug_steps.append(step)
+                                continue
+                            data = resp.json()
+                            before_wallets = len(wallets)
+                            _extract_base58_wallets(data, wallets)
+                            step["wallets_found_delta"] = len(wallets) - before_wallets
+                            step["wallets_found_total"] = len(wallets)
+                            debug_steps.append(step)
+                            if step["wallets_found_delta"] > 0:
+                                break
+                        except Exception as exc:  # noqa: BLE001
+                            debug_steps.append(
+                                {
+                                    "stage": "top_traders_per_mint",
+                                    "url": top_traders_url,
+                                    "mint": mint,
+                                    "query": query,
+                                    "error": str(exc),
+                                }
+                            )
+                            last_error = exc
+                            continue
                     if len(wallets) >= settings.discovery_max_wallets:
                         break
 

@@ -1,6 +1,11 @@
 import asyncio
 
-from app.discovery import SmartWalletDiscovery, _extract_base58_wallets, _extract_token_mints
+from app.discovery import (
+    SmartWalletDiscovery,
+    _dict_looks_like_token_entity,
+    _extract_base58_wallets,
+    _extract_token_mints,
+)
 
 
 def test_extract_base58_wallets_from_nested_payload():
@@ -65,6 +70,32 @@ def test_extract_token_mints_from_nested_payload():
     assert "So11111111111111111111111111111111111111112" in out
     assert "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" in out
     assert "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2" not in out
+
+
+def test_extract_token_mints_from_tokenish_address_rows():
+    out = set()
+    payload = {
+        "data": [
+            {
+                "address": "So11111111111111111111111111111111111111112",
+                "symbol": "SOL",
+                "price": 140.12,
+            },
+            {
+                "address": "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2",
+                "tradeCount": 12,
+                "pnl_30d": 5200,
+            },
+        ]
+    }
+    _extract_token_mints(payload, out)
+    assert "So11111111111111111111111111111111111111112" in out
+    assert "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2" not in out
+
+
+def test_token_entity_heuristics():
+    assert _dict_looks_like_token_entity({"address": "abc", "symbol": "X", "price": 1.2})
+    assert not _dict_looks_like_token_entity({"address": "abc", "pnl_30d": 100, "tradeCount": 3})
 
 
 def test_build_candidate_rows_sorted_and_limited():
