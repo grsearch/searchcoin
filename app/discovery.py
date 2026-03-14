@@ -39,10 +39,12 @@ class SmartWalletDiscovery:
             "x-chain": "solana",
         }
 
-    async def fetch_candidate_wallets(self, limit: int = 200) -> list[str]:
+    async def fetch_candidate_wallets(self, limit: int = 20) -> list[str]:
         """Discover candidate wallets from Birdeye smart-money payloads with endpoint fallbacks."""
         base = settings.birdeye_base_url.rstrip("/")
-        params = {"limit": max(1, min(limit, 1000))}
+        # smart-money endpoint requires 1~20
+        safe_limit = max(1, min(limit, 20))
+        params = {"limit": safe_limit}
         endpoints = [
             f"{base}/smart-money/v1/token/list",
             f"{base}/defi/v2/tokens/top_traders",
@@ -80,40 +82,79 @@ class SmartWalletDiscovery:
         stats: dict[str, dict[str, Any]] = {w: {"address": w} for w in wallets}
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            # wallet/v2/pnl/multiple
-            pnl_url = f"{base}/wallet/v2/pnl/multiple"
-            pnl_resp = await client.post(pnl_url, headers=headers, json={"wallets": wallets})
-            pnl_resp.raise_for_status()
-            pnl_data = pnl_resp.json()
+            # wallet pnl endpoint can change; try multiple candidates.
+            pnl_candidates = [
+                ("POST", f"{base}/wallet/v2/pnl/multiple", {"wallets": wallets}),
+                ("GET", f"{base}/wallet/v2/pnl", None),
+            ]
+            pnl_loaded = False
+            for method, url, body in pnl_candidates:
+                try:
+                    if method == "POST":
+                        resp = await client.post(url, headers=headers, json=body)
+                    else:
+                        # fallback endpoint may be per-wallet
+                        for wallet in wallets:
+                            r = await client.get(url, headers=headers, params={"wallet": wallet})
+                            if r.status_code >= 400:
+                                continue
+                            row = r.json().get("data", {}) if r.text else {}
+                            stats.setdefault(wallet, {"address": wallet}).update(
+                                {
+                                    "pnl_30d": float(row.get("pnl30d", row.get("pnl_30d", 0.0)) or 0.0),
+                                    "pnl_7d": float(row.get("pnl7d", row.get("pnl_7d", 0.0)) or 0.0),
+                                    "profitable_trades": int(row.get("profitableTrades", row.get("profitable_trades", 0)) or 0),
+                                    "total_trades": int(row.get("totalTrades", row.get("total_trades", 0)) or 0),
+                                    "tx_last_7d": int(row.get("txLast7d", row.get("tx_last_7d", 0)) or 0),
+                                    "tx_last_3d": int(row.get("txLast3d", row.get("tx_last_3d", 0)) or 0),
+                                }
+                            )
+                        pnl_loaded = True
+                        break
 
-            for row in pnl_data.get("data", []) if isinstance(pnl_data, dict) else []:
-                address = str(row.get("wallet") or row.get("address") or "").strip()
-                if not address:
+                    if resp.status_code >= 400:
+                        continue
+                    pnl_data = resp.json()
+                    for row in pnl_data.get("data", []) if isinstance(pnl_data, dict) else []:
+                        address = str(row.get("wallet") or row.get("address") or "").strip()
+                        if not address:
+                            continue
+                        stats.setdefault(address, {"address": address}).update(
+                            {
+                                "pnl_30d": float(row.get("pnl30d", row.get("pnl_30d", 0.0)) or 0.0),
+                                "pnl_7d": float(row.get("pnl7d", row.get("pnl_7d", 0.0)) or 0.0),
+                                "profitable_trades": int(row.get("profitableTrades", row.get("profitable_trades", 0)) or 0),
+                                "total_trades": int(row.get("totalTrades", row.get("total_trades", 0)) or 0),
+                                "tx_last_7d": int(row.get("txLast7d", row.get("tx_last_7d", 0)) or 0),
+                                "tx_last_3d": int(row.get("txLast3d", row.get("tx_last_3d", 0)) or 0),
+                            }
+                        )
+                    pnl_loaded = True
+                    break
+                except Exception:  # noqa: BLE001
                     continue
-                stats.setdefault(address, {"address": address}).update(
-                    {
-                        "pnl_30d": float(row.get("pnl30d", row.get("pnl_30d", 0.0)) or 0.0),
-                        "pnl_7d": float(row.get("pnl7d", row.get("pnl_7d", 0.0)) or 0.0),
-                        "profitable_trades": int(row.get("profitableTrades", row.get("profitable_trades", 0)) or 0),
-                        "total_trades": int(row.get("totalTrades", row.get("total_trades", 0)) or 0),
-                        "tx_last_7d": int(row.get("txLast7d", row.get("tx_last_7d", 0)) or 0),
-                        "tx_last_3d": int(row.get("txLast3d", row.get("tx_last_3d", 0)) or 0),
-                    }
-                )
 
             # wallet/v2/current-net-worth per wallet
             net_url = f"{base}/wallet/v2/current-net-worth"
             for wallet in wallets:
-                r = await client.get(net_url, headers=headers, params={"wallet": wallet})
-                if r.status_code >= 400:
+                try:
+                    r = await client.get(net_url, headers=headers, params={"wallet": wallet})
+                    if r.status_code >= 400:
+                        continue
+                    payload = r.json() if r.text else {}
+                    value = 0.0
+                    if isinstance(payload, dict):
+                        data = payload.get("data", {})
+                        if isinstance(data, dict):
+                            value = float(data.get("totalUsd", data.get("total_usd", 0.0)) or 0.0)
+                    stats.setdefault(wallet, {"address": wallet})["net_worth_usd"] = value
+                except Exception:  # noqa: BLE001
                     continue
-                payload = r.json() if r.text else {}
-                value = 0.0
-                if isinstance(payload, dict):
-                    data = payload.get("data", {})
-                    if isinstance(data, dict):
-                        value = float(data.get("totalUsd", data.get("total_usd", 0.0)) or 0.0)
-                stats.setdefault(wallet, {"address": wallet})["net_worth_usd"] = value
+
+        if not pnl_loaded:
+            # keep stats but caller can inspect lack of pnl via zeros
+            for wallet in wallets:
+                stats.setdefault(wallet, {"address": wallet})
 
         return stats
 
@@ -137,9 +178,7 @@ class SmartWalletDiscovery:
         rows.sort(key=lambda x: x["pnl_30d"], reverse=True)
         return rows[: settings.discovery_max_wallets]
 
-
-
-    async def preview_candidates(self, limit: int = 200) -> dict[str, Any]:
+    async def preview_candidates(self, limit: int = 20) -> dict[str, Any]:
         wallets = await self.fetch_candidate_wallets(limit=limit)
         return {
             "ok": True,
@@ -149,7 +188,7 @@ class SmartWalletDiscovery:
 
     async def refresh_candidates(self, persist: bool = True) -> dict[str, Any]:
         try:
-            wallets = await self.fetch_candidate_wallets()
+            wallets = await self.fetch_candidate_wallets(limit=20)
             stats = await self.fetch_wallet_stats(wallets)
             rows = self._build_candidate_rows(stats)
 

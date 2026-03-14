@@ -46,6 +46,14 @@ refresh_state: dict[str, object] = {
 }
 
 
+def _refresh_state_snapshot() -> dict:
+    return {
+        "last_run_ts": refresh_state.get("last_run_ts"),
+        "last_result": refresh_state.get("last_result"),
+        "runs": refresh_state.get("runs", 0),
+    }
+
+
 async def _refresh_smart_wallet_candidates(persist: bool = True) -> dict:
     result = await discovery.refresh_candidates(persist=persist)
     refresh_state["last_run_ts"] = time.time()
@@ -204,23 +212,21 @@ async def api_smart_wallets() -> dict:
 
 
 @app.get("/discovery/candidates")
-async def discovery_candidates(limit: int = 200) -> dict:
+@app.get("/api/discovery/candidates")
+async def discovery_candidates(limit: int = 20) -> dict:
     result = await discovery.preview_candidates(limit=limit)
-    result["refresh_state"] = refresh_state
-    return result
+    return {"result": result, "refresh_state": _refresh_state_snapshot()}
 
 
 @app.post("/api/smart-wallets/refresh")
 async def api_refresh_smart_wallets(persist: bool = True) -> dict:
     result = await _refresh_smart_wallet_candidates(persist=persist)
-    if result.get("ok"):
-        result["report"] = smart_wallet_report()
-    result["refresh_state"] = refresh_state
-    return result
+    report = smart_wallet_report() if result.get("ok") else None
+    return {"result": result, "report": report, "refresh_state": _refresh_state_snapshot()}
 
 @app.get("/api/smart-wallets/refresh-state")
 async def api_smart_wallets_refresh_state() -> dict:
-    return refresh_state
+    return _refresh_state_snapshot()
 
 
 @app.get("/api/engine/state")

@@ -21,7 +21,7 @@
 - `GET /dashboard`：可视化看板（HTML）
 - `GET /api/dashboard`：看板数据（JSON，含 smart wallet report）
 - `GET /api/smart-wallets`：Smart Wallet 打分结果（JSON）
-- `POST /api/smart-wallets/refresh`：自动发现候选钱包并刷新 smart_wallets 数据（可落盘）
+- `POST /api/smart-wallets/refresh`：自动发现候选钱包并刷新 smart_wallets 数据（可落盘，返回 result + refresh_state）
 - `GET /api/smart-wallets/refresh-state`：查看自动刷新任务最近状态（成功/失败/时间）
 - `GET /discovery/candidates`：预览自动发现到的钱包候选
 - `POST /engine/evaluate`：交易信号评估（兼容无 `/api` 前缀调用）
@@ -74,24 +74,8 @@ cp .env.example .env
 
 ```json
 {
-  "wallets": [
-    {
-      "address": "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2",
-      "label": "主账户",
-      "total_asset_usd": 12650.0
-    }
-  ],
-  "positions": [
-    {
-      "wallet_address": "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2",
-      "symbol": "PUMP",
-      "token_mint": "DzMw8nmA5rnoRTTXGHCZaRp9EkMwG2anqY99XxiXpump",
-      "quantity": 150000.0,
-      "avg_buy_price_usd": 0.0042,
-      "current_price_usd": 0.0056,
-      "signal_rule": "breakout_v2"
-    }
-  ]
+  "wallets": [],
+  "positions": []
 }
 ```
 
