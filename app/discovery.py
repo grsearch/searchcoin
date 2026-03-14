@@ -216,6 +216,10 @@ class SmartWalletDiscovery:
                         debug_steps.append(step)
                         continue
                     data = resp.json()
+                    if isinstance(data, dict):
+                        step["api_success"] = data.get("success")
+                        if data.get("message"):
+                            step["api_message"] = str(data.get("message"))
                     before_count = len(wallets)
                     _extract_base58_wallets(data, wallets)
                     step["wallets_found_delta"] = len(wallets) - before_count
@@ -249,6 +253,10 @@ class SmartWalletDiscovery:
                             debug_steps.append(step)
                             continue
                         data = resp.json()
+                        if isinstance(data, dict):
+                            step["api_success"] = data.get("success")
+                            if data.get("message"):
+                                step["api_message"] = str(data.get("message"))
                         before_mints = len(token_mints)
                         _extract_token_mints(data, token_mints)
                         step["mints_found_delta"] = len(token_mints) - before_mints
@@ -269,8 +277,12 @@ class SmartWalletDiscovery:
                 for mint in list(token_mints)[: safe_limit]:
                     param_candidates = [
                         {"address": mint, "limit": safe_limit},
+                        {"address": mint, "limit": safe_limit, "time_frame": "24h"},
+                        {"address": mint, "limit": safe_limit, "time_frame": "1h"},
                         {"token_address": mint, "limit": safe_limit},
+                        {"token_address": mint, "limit": safe_limit, "time_frame": "24h"},
                         {"mint": mint, "limit": safe_limit},
+                        {"mint": mint, "limit": safe_limit, "time_frame": "24h"},
                     ]
                     for query in param_candidates:
                         try:
@@ -290,6 +302,10 @@ class SmartWalletDiscovery:
                                 debug_steps.append(step)
                                 continue
                             data = resp.json()
+                            if isinstance(data, dict):
+                                step["api_success"] = data.get("success")
+                                if data.get("message"):
+                                    step["api_message"] = str(data.get("message"))
                             before_wallets = len(wallets)
                             _extract_base58_wallets(data, wallets)
                             step["wallets_found_delta"] = len(wallets) - before_wallets
