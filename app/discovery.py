@@ -121,6 +121,87 @@ def _is_probably_pump_mint(mint: str) -> bool:
     return mint.strip().lower().endswith("pump")
 
 
+def _to_float(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        s = value.strip().replace(",", "")
+        if not s:
+            return None
+        try:
+            return float(s)
+        except ValueError:
+            return None
+    return None
+
+
+def _extract_token_age_hours(row: dict[str, Any]) -> float | None:
+    age_keys = (
+        "age_hours",
+        "age_hour",
+        "age_h",
+        "ageHours",
+        "ageHour",
+        "age",
+        "age_in_hours",
+        "token_age_hours",
+        "time_since_creation_hours",
+    )
+    for key in age_keys:
+        val = _to_float(row.get(key))
+        if val is not None:
+            return val
+
+    day_keys = ("age_days", "age_day", "ageDays", "token_age_days")
+    for key in day_keys:
+        val = _to_float(row.get(key))
+        if val is not None:
+            return val * 24.0
+
+    second_keys = (
+        "age_seconds",
+        "age_sec",
+        "ageSeconds",
+        "time_since_creation_seconds",
+        "token_age_seconds",
+    )
+    for key in second_keys:
+        val = _to_float(row.get(key))
+        if val is not None:
+            return val / 3600.0
+
+    return None
+
+
+def _extract_token_fdv_usd(row: dict[str, Any]) -> float | None:
+    for key in ("fdv", "fdv_usd", "fully_diluted_valuation", "fullyDilutedValuation"):
+        val = _to_float(row.get(key))
+        if val is not None:
+            return val
+    return None
+
+
+def _token_row_passes_seed_filters(
+    row: dict[str, Any],
+    *,
+    min_age_hours: float,
+    max_age_hours: float,
+    min_fdv_usd: float,
+) -> tuple[bool, str]:
+    age_hours = _extract_token_age_hours(row)
+    fdv_usd = _extract_token_fdv_usd(row)
+
+    if age_hours is not None and age_hours < min_age_hours:
+        return False, "age_too_low"
+    if age_hours is not None and age_hours > max_age_hours:
+        return False, "age_too_high"
+    if fdv_usd is not None and fdv_usd < min_fdv_usd:
+        return False, "fdv_too_low"
+    return True, "accepted"
+
+
 def _extract_token_mints(
     payload: Any,
     out: set[str],
@@ -170,13 +251,23 @@ def _extract_token_mints(
             _record_candidate(payload.strip())
 
 
-def _extract_token_mints_from_token_rows(payload: Any, out: set[str]) -> tuple[dict[str, Any], dict[str, int]]:
+def _extract_token_mints_from_token_rows(
+    payload: Any,
+    out: set[str],
+    *,
+    min_age_hours: float = 24.0,
+    max_age_hours: float = 14.0 * 24.0,
+    min_fdv_usd: float = 1_000_000.0,
+) -> tuple[dict[str, Any], dict[str, int]]:
     """Direct extraction for token-seed endpoints, bypassing token-entity heuristics."""
     stats = {
         "rows_seen": 0,
         "tokens_extracted": 0,
         "accepted_mints": 0,
         "rejected_non_base58": 0,
+        "rejected_age_too_low": 0,
+        "rejected_age_too_high": 0,
+        "rejected_fdv_too_low": 0,
     }
     debug: dict[str, Any] = {
         "sample_row_keys": [],
@@ -214,11 +305,22 @@ def _extract_token_mints_from_token_rows(payload: Any, out: set[str]) -> tuple[d
             continue
         candidate_s = candidate.strip()
         stats["tokens_extracted"] += 1
-        if BASE58_RE.match(candidate_s):
-            out.add(candidate_s)
-            stats["accepted_mints"] += 1
-        else:
+        if not BASE58_RE.match(candidate_s):
             stats["rejected_non_base58"] += 1
+            continue
+
+        ok, reason = _token_row_passes_seed_filters(
+            row,
+            min_age_hours=min_age_hours,
+            max_age_hours=max_age_hours,
+            min_fdv_usd=min_fdv_usd,
+        )
+        if not ok:
+            stats[f"rejected_{reason}"] += 1
+            continue
+
+        out.add(candidate_s)
+        stats["accepted_mints"] += 1
 
     return debug, stats
 
