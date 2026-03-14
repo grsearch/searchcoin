@@ -262,6 +262,7 @@ class SmartWalletDiscovery:
         base = settings.birdeye_base_url.rstrip("/")
         # smart-money endpoint requires 1~20
         safe_limit = max(1, min(limit, 20))
+        safe_top_traders_limit = max(1, min(safe_limit, 10))
         params = {"limit": safe_limit}
         direct_wallet_endpoints = [
             f"{base}/smart-money/v1/token/list",
@@ -366,7 +367,7 @@ class SmartWalletDiscovery:
                 top_traders_url = f"{base}/defi/v2/tokens/top_traders"
                 for mint in list(token_mints)[: safe_limit]:
                     param_candidates = [
-                        {"address": mint, "time_frame": "24h", "limit": safe_limit},
+                        {"address": mint, "time_frame": "24h", "limit": safe_top_traders_limit},
                     ]
                     for query in param_candidates:
                         try:
@@ -417,6 +418,7 @@ class SmartWalletDiscovery:
 
         self.last_candidate_debug = {
             "safe_limit": safe_limit,
+            "safe_top_traders_limit": safe_top_traders_limit,
             "wallets_found": len(wallets),
             "steps": debug_steps,
         }
