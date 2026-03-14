@@ -203,6 +203,13 @@ async def api_smart_wallets() -> dict:
 
 
 
+@app.get("/discovery/candidates")
+async def discovery_candidates(limit: int = 200) -> dict:
+    result = await discovery.preview_candidates(limit=limit)
+    result["refresh_state"] = refresh_state
+    return result
+
+
 @app.post("/api/smart-wallets/refresh")
 async def api_refresh_smart_wallets(persist: bool = True) -> dict:
     result = await _refresh_smart_wallet_candidates(persist=persist)
@@ -237,6 +244,7 @@ async def engine_ingest_event(payload: WalletEventIn) -> dict:
 
 
 @app.post("/api/engine/evaluate")
+@app.post("/engine/evaluate")
 async def engine_evaluate(payload: EvaluateRequest) -> dict:
     decision = await engine.evaluate_token(payload.token_mint)
     return decision.__dict__

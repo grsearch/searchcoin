@@ -23,6 +23,8 @@
 - `GET /api/smart-wallets`：Smart Wallet 打分结果（JSON）
 - `POST /api/smart-wallets/refresh`：自动发现候选钱包并刷新 smart_wallets 数据（可落盘）
 - `GET /api/smart-wallets/refresh-state`：查看自动刷新任务最近状态（成功/失败/时间）
+- `GET /discovery/candidates`：预览自动发现到的钱包候选
+- `POST /engine/evaluate`：交易信号评估（兼容无 `/api` 前缀调用）
 - `GET /api/engine/state`：信号引擎运行状态
 - `POST /api/engine/event`：注入监听到的钱包交易事件（buy/sell）
 - `POST /api/engine/evaluate`：评估单个 token 是否触发买卖信号
@@ -68,7 +70,7 @@ cp .env.example .env
 
 ### 3) 维护 Dashboard 数据
 
-编辑 `data/dashboard.json`：
+编辑 `data/dashboard.json`（默认空，避免展示示例钱包）：
 
 ```json
 {
@@ -128,6 +130,8 @@ cp .env.example .env
 curl "http://localhost:8000/token/So11111111111111111111111111111111111111112"
 curl "http://localhost:8000/api/dashboard"
 curl "http://localhost:8000/api/smart-wallets"
+curl "http://localhost:8000/discovery/candidates"
+curl -X POST "http://localhost:8000/engine/evaluate" -H "Content-Type: application/json" -d '{"token_mint":"So11111111111111111111111111111111111111112"}'
 ```
 
 浏览器打开：

@@ -42,26 +42,8 @@ class PositionItem:
         return self.pnl_usd / self.cost_basis_usd * 100
 
 
-DEFAULT_DASHBOARD_DATA = {
-    "wallets": [
-        {
-            "address": "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2",
-            "total_asset_usd": 12650.0,
-            "label": "主账户",
-        }
-    ],
-    "positions": [
-        {
-            "wallet_address": "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2",
-            "symbol": "PUMP",
-            "token_mint": "DzMw8nmA5rnoRTTXGHCZaRp9EkMwG2anqY99XxiXpump",
-            "quantity": 150000.0,
-            "avg_buy_price_usd": 0.0042,
-            "current_price_usd": 0.0056,
-            "signal_rule": "breakout_v2",
-        }
-    ],
-}
+DEFAULT_DASHBOARD_DATA = {"wallets": [], "positions": []}
+
 
 
 def wallet_gmgn_url(address: str) -> str:

@@ -40,17 +40,34 @@ class SmartWalletDiscovery:
         }
 
     async def fetch_candidate_wallets(self, limit: int = 200) -> list[str]:
-        """Discover candidate wallets from Birdeye smart-money token list payloads."""
-        url = f"{settings.birdeye_base_url.rstrip('/')}/smart-money/v1/token/list"
+        """Discover candidate wallets from Birdeye smart-money payloads with endpoint fallbacks."""
+        base = settings.birdeye_base_url.rstrip("/")
         params = {"limit": max(1, min(limit, 1000))}
+        endpoints = [
+            f"{base}/smart-money/v1/token/list",
+            f"{base}/defi/v2/tokens/top_traders",
+            f"{base}/defi/v3/token/list",
+        ]
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.get(url, headers=self._headers(), params=params)
-            resp.raise_for_status()
-            data = resp.json()
-
+        last_error = None
         wallets: set[str] = set()
-        _extract_base58_wallets(data, wallets)
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            for url in endpoints:
+                try:
+                    resp = await client.get(url, headers=self._headers(), params=params)
+                    if resp.status_code >= 400:
+                        continue
+                    data = resp.json()
+                    _extract_base58_wallets(data, wallets)
+                    if wallets:
+                        break
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    continue
+
+        if not wallets and last_error:
+            raise RuntimeError(f"candidate endpoint fallback failed: {last_error}")
+
         return sorted(wallets)[: settings.discovery_max_wallets]
 
     async def fetch_wallet_stats(self, wallets: list[str]) -> dict[str, dict[str, Any]]:
@@ -119,6 +136,16 @@ class SmartWalletDiscovery:
             )
         rows.sort(key=lambda x: x["pnl_30d"], reverse=True)
         return rows[: settings.discovery_max_wallets]
+
+
+
+    async def preview_candidates(self, limit: int = 200) -> dict[str, Any]:
+        wallets = await self.fetch_candidate_wallets(limit=limit)
+        return {
+            "ok": True,
+            "count": len(wallets),
+            "wallets": wallets,
+        }
 
     async def refresh_candidates(self, persist: bool = True) -> dict[str, Any]:
         try:
