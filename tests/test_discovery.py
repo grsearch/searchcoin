@@ -1,4 +1,4 @@
-from app.discovery import SmartWalletDiscovery, _extract_base58_wallets
+from app.discovery import SmartWalletDiscovery, _extract_base58_wallets, _extract_token_mints
 
 
 def test_extract_base58_wallets_from_nested_payload():
@@ -48,6 +48,21 @@ def test_extract_wallets_from_wallet_list_strings():
     _extract_base58_wallets(payload, out)
     assert "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2" in out
     assert "5dfHpiBxagAKGUMLpCM246qHb8i8gADE3xdpVnDKpump" not in out
+
+
+def test_extract_token_mints_from_nested_payload():
+    out = set()
+    payload = {
+        "data": [
+            {"mint": "So11111111111111111111111111111111111111112"},
+            {"token_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"},
+            {"wallet": "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2"},
+        ]
+    }
+    _extract_token_mints(payload, out)
+    assert "So11111111111111111111111111111111111111112" in out
+    assert "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" in out
+    assert "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2" not in out
 
 
 def test_build_candidate_rows_sorted_and_limited():

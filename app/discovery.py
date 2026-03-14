@@ -38,6 +38,7 @@ TOKEN_FIELD_HINTS = {
     "pair_address",
     "symbol",
 }
+TOKEN_MINT_HINTS = {"mint", "token_address", "tokenaddress", "base_mint", "quote_mint"}
 
 
 def _normalize_key(value: str) -> str:
@@ -93,6 +94,31 @@ def _add_wallet_candidate(value: str, out: set[str]) -> None:
     out.add(candidate)
 
 
+def _extract_token_mints(payload: Any, out: set[str], parent_key: str = "") -> None:
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            key_norm = _normalize_key(str(key))
+            if isinstance(value, str) and (key_norm in TOKEN_MINT_HINTS or key_norm.endswith("mint")):
+                candidate = value.strip()
+                if BASE58_RE.match(candidate):
+                    out.add(candidate)
+            else:
+                _extract_token_mints(value, out, parent_key=key_norm)
+        return
+
+    if isinstance(payload, list):
+        for item in payload:
+            _extract_token_mints(item, out, parent_key=parent_key)
+        return
+
+    if isinstance(payload, str):
+        # Some endpoints return plain mint arrays.
+        if parent_key in {"mints", "tokens", "token_mints"}:
+            candidate = payload.strip()
+            if BASE58_RE.match(candidate):
+                out.add(candidate)
+
+
 def _extract_base58_wallets(payload: Any, out: set[str], parent_key: str = "") -> None:
     if isinstance(payload, dict):
         treat_address_as_wallet = _dict_looks_like_wallet_entity(payload)
@@ -136,16 +162,20 @@ class SmartWalletDiscovery:
         # smart-money endpoint requires 1~20
         safe_limit = max(1, min(limit, 20))
         params = {"limit": safe_limit}
-        endpoints = [
+        direct_wallet_endpoints = [
+            f"{base}/smart-money/v1/wallet/list",
             f"{base}/smart-money/v1/token/list",
-            f"{base}/defi/v2/tokens/top_traders",
+            f"{base}/defi/v3/token/list",
+        ]
+        token_seed_endpoints = [
+            f"{base}/smart-money/v1/token/list",
             f"{base}/defi/v3/token/list",
         ]
 
         last_error = None
         wallets: set[str] = set()
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            for url in endpoints:
+            for url in direct_wallet_endpoints:
                 try:
                     resp = await client.get(url, headers=self._headers(), params=params)
                     if resp.status_code >= 400:
@@ -157,6 +187,38 @@ class SmartWalletDiscovery:
                 except Exception as exc:  # noqa: BLE001
                     last_error = exc
                     continue
+
+            # Fallback: discover token mints first, then query top traders per mint to get wallet addresses.
+            if not wallets:
+                token_mints: set[str] = set()
+                for url in token_seed_endpoints:
+                    try:
+                        resp = await client.get(url, headers=self._headers(), params=params)
+                        if resp.status_code >= 400:
+                            continue
+                        data = resp.json()
+                        _extract_token_mints(data, token_mints)
+                    except Exception as exc:  # noqa: BLE001
+                        last_error = exc
+                        continue
+
+                top_traders_url = f"{base}/defi/v2/tokens/top_traders"
+                for mint in list(token_mints)[: safe_limit]:
+                    try:
+                        resp = await client.get(
+                            top_traders_url,
+                            headers=self._headers(),
+                            params={"address": mint, "limit": safe_limit},
+                        )
+                        if resp.status_code >= 400:
+                            continue
+                        data = resp.json()
+                        _extract_base58_wallets(data, wallets)
+                    except Exception as exc:  # noqa: BLE001
+                        last_error = exc
+                        continue
+                    if len(wallets) >= settings.discovery_max_wallets:
+                        break
 
         if not wallets and last_error:
             raise RuntimeError(f"candidate endpoint fallback failed: {last_error}")
