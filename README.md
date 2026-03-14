@@ -279,6 +279,7 @@ score =
 - 自动过滤典型 Pump.fun mint（`...pump`）以降低误识别。
 - 对 `address` 字段采用上下文判断：若同一对象包含交易/收益指标（如 pnl/tradeCount/volume），会识别为钱包；若是 token 元数据（如 symbol/mint）则忽略。
 - 若直连 smart-wallet 接口无钱包数据，系统会自动走“token list -> top traders”二级回退来提取钱包候选。
+- discovery 采用双通道：优先尝试钱包维度入口（wallet seed endpoints），若为空再走 token 维度入口（token seed -> top traders）。
 - token seed 提取支持 `data[].token`（如 `smart-money/v1/token/list` 返回结构）以及 `mint/token_address/address` 变体。
 - top traders 查询默认使用文档主参数 `address`，并固定带 `time_frame=24h` 与 `limit`，避免参数缺失导致 400。
 - top traders 的 `limit` 会自动限制在 `1-10`（Birdeye 约束），避免 `"limit should be integer, range 1-10"`。

@@ -264,6 +264,12 @@ class SmartWalletDiscovery:
         safe_limit = max(1, min(limit, 20))
         safe_top_traders_limit = max(1, min(safe_limit, 10))
         params = {"limit": safe_limit}
+        wallet_seed_endpoints = [
+            f"{base}/smart-money/v1/wallet/list",
+            f"{base}/smart-money/v1/wallets/list",
+            f"{base}/wallet/v2/pnl/leaderboard",
+            f"{base}/wallet/v2/pnl",
+        ]
         direct_wallet_endpoints = [
             f"{base}/smart-money/v1/token/list",
             f"{base}/defi/v3/token/list",
@@ -277,11 +283,12 @@ class SmartWalletDiscovery:
         wallets: set[str] = set()
         debug_steps: list[dict[str, Any]] = []
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            for url in direct_wallet_endpoints:
+            # Channel A (preferred): wallet-first discovery endpoints.
+            for url in wallet_seed_endpoints:
                 try:
                     resp = await client.get(url, headers=self._headers(), params=params)
                     step: dict[str, Any] = {
-                        "stage": "direct_wallet_endpoint",
+                        "stage": "wallet_seed_endpoint",
                         "url": url,
                         "status_code": resp.status_code,
                     }
@@ -303,13 +310,49 @@ class SmartWalletDiscovery:
                 except Exception as exc:  # noqa: BLE001
                     debug_steps.append(
                         {
-                            "stage": "direct_wallet_endpoint",
+                            "stage": "wallet_seed_endpoint",
                             "url": url,
                             "error": str(exc),
                         }
                     )
                     last_error = exc
                     continue
+
+            # Channel B: token-first discovery endpoints.
+            if not wallets:
+                for url in direct_wallet_endpoints:
+                    try:
+                        resp = await client.get(url, headers=self._headers(), params=params)
+                        step: dict[str, Any] = {
+                            "stage": "direct_wallet_endpoint",
+                            "url": url,
+                            "status_code": resp.status_code,
+                        }
+                        if resp.status_code >= 400:
+                            debug_steps.append(step)
+                            continue
+                        data = resp.json()
+                        if isinstance(data, dict):
+                            step["api_success"] = data.get("success")
+                            if data.get("message"):
+                                step["api_message"] = str(data.get("message"))
+                        before_count = len(wallets)
+                        _extract_base58_wallets(data, wallets)
+                        step["wallets_found_delta"] = len(wallets) - before_count
+                        step["wallets_found_total"] = len(wallets)
+                        debug_steps.append(step)
+                        if wallets:
+                            break
+                    except Exception as exc:  # noqa: BLE001
+                        debug_steps.append(
+                            {
+                                "stage": "direct_wallet_endpoint",
+                                "url": url,
+                                "error": str(exc),
+                            }
+                        )
+                        last_error = exc
+                        continue
 
             # Fallback: discover token mints first, then query top traders per mint to get wallet addresses.
             if not wallets:
