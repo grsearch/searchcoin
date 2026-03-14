@@ -18,8 +18,8 @@
 
 - `GET /health`：健康检查
 - `GET /token/{mint}`：聚合三方 API 响应，输出统一 JSON
-- `GET /dashboard`：可视化看板（HTML）
-- `GET /api/dashboard`：看板数据（JSON，含 smart wallet report）
+- `GET /dashboard`：可视化看板（HTML，含本轮 discovery 的 token seeds 列表）
+- `GET /api/dashboard`：看板数据（JSON，含 smart wallet report 与 token seeds）
 - `GET /api/smart-wallets`：Smart Wallet 打分结果（JSON）
 - `POST /api/smart-wallets/refresh`：自动发现候选钱包并刷新 smart_wallets 数据（可落盘，返回 result + refresh_state；包含 real_stats_rows/proxy_stats_rows）
 - `GET /api/smart-wallets/refresh-state`：查看自动刷新任务最近状态（成功/失败/时间）

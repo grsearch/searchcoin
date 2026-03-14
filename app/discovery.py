@@ -631,10 +631,16 @@ class SmartWalletDiscovery:
                     if len(wallets) >= settings.discovery_max_wallets:
                         break
 
+        token_seeds_considered: list[str] = []
+        if "ordered_mints" in locals():
+            token_seeds_considered = ordered_mints[:safe_limit]
+
         self.last_candidate_debug = {
             "safe_limit": safe_limit,
             "safe_top_traders_limit": safe_top_traders_limit,
             "wallets_found": len(wallets),
+            "token_seeds_considered": token_seeds_considered,
+            "token_seeds_considered_count": len(token_seeds_considered),
             "steps": debug_steps,
         }
 

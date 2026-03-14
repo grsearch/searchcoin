@@ -103,6 +103,52 @@ async def _relay_json(url: str, payload: dict) -> dict:
 
 
 
+
+
+def _recent_token_seeds_from_refresh() -> list[str]:
+    last_result = refresh_state.get("last_result")
+    if not isinstance(last_result, dict):
+        return []
+    debug = last_result.get("discovery_debug")
+    if not isinstance(debug, dict):
+        return []
+
+    seeds = debug.get("token_seeds_considered")
+    if isinstance(seeds, list):
+        cleaned = [s for s in seeds if isinstance(s, str) and s.strip()]
+        if cleaned:
+            return cleaned
+
+    inferred: list[str] = []
+    seen: set[str] = set()
+    steps = debug.get("steps")
+    if isinstance(steps, list):
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            if step.get("stage") != "top_traders_per_mint":
+                continue
+            mint = step.get("mint")
+            if isinstance(mint, str) and mint and mint not in seen:
+                seen.add(mint)
+                inferred.append(mint)
+    return inferred
+
+
+def _token_seeds_table_rows(token_seeds: list[str]) -> str:
+    if not token_seeds:
+        return "<tr><td colspan='2'>暂无 token seed 数据（先运行一次 scanner refresh）</td></tr>"
+
+    return "".join(
+        (
+            "<tr>"
+            f"<td>{idx}</td>"
+            f"<td><a href='{escape(token_gmgn_url(seed))}' target='_blank' rel='noopener noreferrer'>{escape(seed)}</a></td>"
+            "</tr>"
+        )
+        for idx, seed in enumerate(token_seeds, start=1)
+    )
+
 def _refresh_state_snapshot() -> dict:
     return {
         "last_run_ts": refresh_state.get("last_run_ts"),
@@ -219,6 +265,8 @@ async def dashboard() -> str:
         for w in smart_report["smart_wallets"]
     ) or "<tr><td colspan='8'>暂无 Smart Wallet 白名单</td></tr>"
 
+    token_seeds = _recent_token_seeds_from_refresh()
+    token_seed_rows = _token_seeds_table_rows(token_seeds)
     total_pnl_color = "#16a34a" if data["positions_pnl_usd"] >= 0 else "#dc2626"
 
     return f"""
@@ -250,6 +298,7 @@ async def dashboard() -> str:
           <div class='card'><strong>信号持仓市值</strong><br/>${data['positions_market_value_usd']:,.2f}</div>
           <div class='card'><strong>信号持仓总盈亏</strong><br/><span style='color:{total_pnl_color}'>${data['positions_pnl_usd']:,.2f}</span></div>
           <div class='card'><strong>Smart Wallet 白名单数</strong><br/>{smart_report['count_whitelisted']}</div>
+          <div class='card'><strong>当前 token seeds 数</strong><br/>{len(token_seeds)}</div>
         </div>
 
         <h2 class='section-title'>正在监控的钱包地址</h2>
@@ -267,6 +316,12 @@ async def dashboard() -> str:
             </tr>
           </thead>
           <tbody>{positions_rows}</tbody>
+        </table>
+
+        <h2 class='section-title'>本轮 Discovery 使用的 Token Seeds</h2>
+        <table>
+          <thead><tr><th>#</th><th>Token Mint（点击跳转 GMGN）</th></tr></thead>
+          <tbody>{token_seed_rows}</tbody>
         </table>
 
         <h2 class='section-title'>Smart Wallet 白名单（Score ≥ 80）</h2>
@@ -290,6 +345,7 @@ async def dashboard() -> str:
 async def dashboard_data() -> dict:
     payload = dashboard_json_payload()
     payload["smart_wallet_report"] = smart_wallet_report()
+    payload["token_seeds"] = _recent_token_seeds_from_refresh()
     return payload
 
 
