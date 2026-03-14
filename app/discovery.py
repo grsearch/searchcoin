@@ -241,20 +241,27 @@ def _token_row_passes_seed_filters(
     lp_usd = _extract_token_lp_usd(row)
     lp_burned_ratio = _extract_token_lp_burned_ratio(row)
 
-    if age_hours is not None and age_hours < min_age_hours:
+    # Strict mode: missing quality fields should be rejected to avoid junk seeds.
+    if age_hours is None:
+        return False, "missing_age"
+    if fdv_usd is None:
+        return False, "missing_fdv"
+    if lp_usd is None:
+        return False, "missing_lp"
+    if lp_burned_ratio is None:
+        return False, "missing_lp_burned"
+
+    if age_hours < min_age_hours:
         return False, "age_too_low"
-    if age_hours is not None and age_hours > max_age_hours:
+    if age_hours > max_age_hours:
         return False, "age_too_high"
-    if fdv_usd is not None and fdv_usd < min_fdv_usd:
+    if fdv_usd < min_fdv_usd:
         return False, "fdv_too_low"
-    if (
-        lp_usd is not None
-        and fdv_usd is not None
-        and fdv_usd > 0
-        and (lp_usd / fdv_usd) < min_lp_to_fdv_ratio
-    ):
+    if fdv_usd <= 0:
+        return False, "fdv_too_low"
+    if (lp_usd / fdv_usd) < min_lp_to_fdv_ratio:
         return False, "lp_to_fdv_too_low"
-    if lp_burned_ratio is not None and lp_burned_ratio < min_lp_burned_ratio:
+    if lp_burned_ratio < min_lp_burned_ratio:
         return False, "lp_burned_too_low"
     return True, "accepted"
 
@@ -329,6 +336,10 @@ def _extract_token_mints_from_token_rows(
         "rejected_fdv_too_low": 0,
         "rejected_lp_to_fdv_too_low": 0,
         "rejected_lp_burned_too_low": 0,
+        "rejected_missing_age": 0,
+        "rejected_missing_fdv": 0,
+        "rejected_missing_lp": 0,
+        "rejected_missing_lp_burned": 0,
     }
     debug: dict[str, Any] = {
         "sample_row_keys": [],

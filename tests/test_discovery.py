@@ -39,6 +39,46 @@ def test_token_row_passes_seed_filters():
     )
     assert ok and reason == "accepted"
 
+    missing_age, reason = _token_row_passes_seed_filters(
+        {"fdv": 2_000_000, "liquidity": 300_000, "lp_burned_percent": 100},
+        min_age_hours=24,
+        max_age_hours=14 * 24,
+        min_fdv_usd=1_000_000,
+        min_lp_to_fdv_ratio=0.10,
+        min_lp_burned_ratio=1.0,
+    )
+    assert not missing_age and reason == "missing_age"
+
+    missing_fdv, reason = _token_row_passes_seed_filters(
+        {"age": 48, "liquidity": 300_000, "lp_burned_percent": 100},
+        min_age_hours=24,
+        max_age_hours=14 * 24,
+        min_fdv_usd=1_000_000,
+        min_lp_to_fdv_ratio=0.10,
+        min_lp_burned_ratio=1.0,
+    )
+    assert not missing_fdv and reason == "missing_fdv"
+
+    missing_lp, reason = _token_row_passes_seed_filters(
+        {"age": 48, "fdv": 2_000_000, "lp_burned_percent": 100},
+        min_age_hours=24,
+        max_age_hours=14 * 24,
+        min_fdv_usd=1_000_000,
+        min_lp_to_fdv_ratio=0.10,
+        min_lp_burned_ratio=1.0,
+    )
+    assert not missing_lp and reason == "missing_lp"
+
+    missing_lp_burned, reason = _token_row_passes_seed_filters(
+        {"age": 48, "fdv": 2_000_000, "liquidity": 300_000},
+        min_age_hours=24,
+        max_age_hours=14 * 24,
+        min_fdv_usd=1_000_000,
+        min_lp_to_fdv_ratio=0.10,
+        min_lp_burned_ratio=1.0,
+    )
+    assert not missing_lp_burned and reason == "missing_lp_burned"
+
     too_new, reason = _token_row_passes_seed_filters(
         {"age": 12, "fdv": 2_000_000, "liquidity": 300_000, "lp_burned_percent": 100},
         min_age_hours=24,
@@ -121,6 +161,24 @@ def test_extract_token_mints_from_token_rows_applies_lp_filters():
     assert stats["rejected_lp_to_fdv_too_low"] == 1
     assert stats["rejected_lp_burned_too_low"] == 1
 
+
+
+def test_extract_token_mints_from_token_rows_rejects_missing_quality_fields():
+    out = set()
+    payload = {
+        "data": [
+            {"token": "So11111111111111111111111111111111111111112", "fdv": 2_000_000, "liquidity": 300_000, "lp_burned_percent": 100},
+            {"token": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "age": 48, "liquidity": 300_000, "lp_burned_percent": 100},
+            {"token": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", "age": 48, "fdv": 2_000_000, "lp_burned_percent": 100},
+            {"token": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6P4A1Aq9Ex6vR7x", "age": 48, "fdv": 2_000_000, "liquidity": 300_000},
+        ]
+    }
+    _, stats = _extract_token_mints_from_token_rows(payload, out)
+    assert len(out) == 0
+    assert stats["rejected_missing_age"] == 1
+    assert stats["rejected_missing_fdv"] == 1
+    assert stats["rejected_missing_lp"] == 1
+    assert stats["rejected_missing_lp_burned"] == 1
 
 
 def test_extract_base58_wallets_from_nested_payload():
