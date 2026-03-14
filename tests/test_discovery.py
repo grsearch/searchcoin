@@ -1,3 +1,5 @@
+import asyncio
+
 from app.discovery import SmartWalletDiscovery, _extract_base58_wallets, _extract_token_mints
 
 
@@ -93,3 +95,22 @@ def test_proxy_stats_fill_non_zero_values():
         assert row["profitable_trades"] > 0
         assert row["tx_last_7d"] > 0
         assert row["net_worth_usd"] > 0
+
+
+def test_preview_candidates_includes_debug_snapshot(monkeypatch):
+    service = SmartWalletDiscovery()
+
+    async def _fake_fetch(limit=20):
+        service.last_candidate_debug = {
+            "safe_limit": limit,
+            "wallets_found": 1,
+            "steps": [{"stage": "direct_wallet_endpoint", "status_code": 200}],
+        }
+        return ["DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2"]
+
+    monkeypatch.setattr(service, "fetch_candidate_wallets", _fake_fetch)
+    payload = asyncio.run(service.preview_candidates(limit=7))
+    assert payload["ok"] is True
+    assert payload["count"] == 1
+    assert "discovery_debug" in payload
+    assert payload["discovery_debug"]["safe_limit"] == 7

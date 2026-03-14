@@ -279,3 +279,4 @@ score =
 - 自动过滤典型 Pump.fun mint（`...pump`）以降低误识别。
 - 对 `address` 字段采用上下文判断：若同一对象包含交易/收益指标（如 pnl/tradeCount/volume），会识别为钱包；若是 token 元数据（如 symbol/mint）则忽略。
 - 若直连 smart-wallet 接口无钱包数据，系统会自动走“token list -> top traders”二级回退来提取钱包候选。
+- `GET /discovery/candidates` 与 `POST /api/smart-wallets/refresh` 会返回 `discovery_debug`，可直接看到每个上游端点状态码与每一步提取数量，便于定位“权限问题 / 空数据窗口 / 字段变更”。

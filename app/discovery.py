@@ -147,6 +147,7 @@ def _extract_base58_wallets(payload: Any, out: set[str], parent_key: str = "") -
 class SmartWalletDiscovery:
     def __init__(self, timeout: float = settings.request_timeout_seconds):
         self.timeout = timeout
+        self.last_candidate_debug: dict[str, Any] = {"steps": []}
 
     def _headers(self) -> dict[str, str]:
         if not settings.birdeye_api_key:
@@ -174,17 +175,35 @@ class SmartWalletDiscovery:
 
         last_error = None
         wallets: set[str] = set()
+        debug_steps: list[dict[str, Any]] = []
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             for url in direct_wallet_endpoints:
                 try:
                     resp = await client.get(url, headers=self._headers(), params=params)
+                    step: dict[str, Any] = {
+                        "stage": "direct_wallet_endpoint",
+                        "url": url,
+                        "status_code": resp.status_code,
+                    }
                     if resp.status_code >= 400:
+                        debug_steps.append(step)
                         continue
                     data = resp.json()
+                    before_count = len(wallets)
                     _extract_base58_wallets(data, wallets)
+                    step["wallets_found_delta"] = len(wallets) - before_count
+                    step["wallets_found_total"] = len(wallets)
+                    debug_steps.append(step)
                     if wallets:
                         break
                 except Exception as exc:  # noqa: BLE001
+                    debug_steps.append(
+                        {
+                            "stage": "direct_wallet_endpoint",
+                            "url": url,
+                            "error": str(exc),
+                        }
+                    )
                     last_error = exc
                     continue
 
@@ -194,11 +213,28 @@ class SmartWalletDiscovery:
                 for url in token_seed_endpoints:
                     try:
                         resp = await client.get(url, headers=self._headers(), params=params)
+                        step = {
+                            "stage": "token_seed_endpoint",
+                            "url": url,
+                            "status_code": resp.status_code,
+                        }
                         if resp.status_code >= 400:
+                            debug_steps.append(step)
                             continue
                         data = resp.json()
+                        before_mints = len(token_mints)
                         _extract_token_mints(data, token_mints)
+                        step["mints_found_delta"] = len(token_mints) - before_mints
+                        step["mints_found_total"] = len(token_mints)
+                        debug_steps.append(step)
                     except Exception as exc:  # noqa: BLE001
+                        debug_steps.append(
+                            {
+                                "stage": "token_seed_endpoint",
+                                "url": url,
+                                "error": str(exc),
+                            }
+                        )
                         last_error = exc
                         continue
 
@@ -210,15 +246,40 @@ class SmartWalletDiscovery:
                             headers=self._headers(),
                             params={"address": mint, "limit": safe_limit},
                         )
+                        step = {
+                            "stage": "top_traders_per_mint",
+                            "url": top_traders_url,
+                            "mint": mint,
+                            "status_code": resp.status_code,
+                        }
                         if resp.status_code >= 400:
+                            debug_steps.append(step)
                             continue
                         data = resp.json()
+                        before_wallets = len(wallets)
                         _extract_base58_wallets(data, wallets)
+                        step["wallets_found_delta"] = len(wallets) - before_wallets
+                        step["wallets_found_total"] = len(wallets)
+                        debug_steps.append(step)
                     except Exception as exc:  # noqa: BLE001
+                        debug_steps.append(
+                            {
+                                "stage": "top_traders_per_mint",
+                                "url": top_traders_url,
+                                "mint": mint,
+                                "error": str(exc),
+                            }
+                        )
                         last_error = exc
                         continue
                     if len(wallets) >= settings.discovery_max_wallets:
                         break
+
+        self.last_candidate_debug = {
+            "safe_limit": safe_limit,
+            "wallets_found": len(wallets),
+            "steps": debug_steps,
+        }
 
         if not wallets and last_error:
             raise RuntimeError(f"candidate endpoint fallback failed: {last_error}")
@@ -402,6 +463,7 @@ class SmartWalletDiscovery:
             "ok": True,
             "count": len(wallets),
             "wallets": wallets,
+            "discovery_debug": self.last_candidate_debug,
         }
 
     async def refresh_candidates(self, persist: bool = True) -> dict[str, Any]:
@@ -418,6 +480,7 @@ class SmartWalletDiscovery:
                     "discovered_wallets": len(wallets),
                     "candidate_rows": 0,
                     "persisted": False,
+                    "discovery_debug": self.last_candidate_debug,
                 }
 
             payload = {"wallets": rows}
@@ -437,10 +500,12 @@ class SmartWalletDiscovery:
                 "persisted": persist,
                 "real_stats_rows": real_stats,
                 "proxy_stats_rows": proxy_stats,
+                "discovery_debug": self.last_candidate_debug,
             }
         except Exception as exc:  # noqa: BLE001
             return {
                 "ok": False,
                 "error": str(exc),
                 "hint": "Check Birdeye API key, endpoint availability, and network egress",
+                "discovery_debug": self.last_candidate_debug,
             }
