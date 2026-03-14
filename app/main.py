@@ -105,12 +105,30 @@ async def _relay_json(url: str, payload: dict) -> dict:
 
 
 
-def _recent_token_seeds_from_refresh() -> list[str]:
+def _latest_discovery_debug() -> dict:
     last_result = refresh_state.get("last_result")
-    if not isinstance(last_result, dict):
-        return []
-    debug = last_result.get("discovery_debug")
-    if not isinstance(debug, dict):
+    if isinstance(last_result, dict):
+        direct = last_result.get("discovery_debug")
+        if isinstance(direct, dict):
+            return direct
+
+        nested = last_result.get("result")
+        if isinstance(nested, dict):
+            nested_debug = nested.get("discovery_debug")
+            if isinstance(nested_debug, dict):
+                return nested_debug
+
+    # Fallback: discovery object may already hold debug from preview/discovery calls.
+    in_memory = getattr(discovery, "last_candidate_debug", None)
+    if isinstance(in_memory, dict):
+        return in_memory
+
+    return {}
+
+
+def _recent_token_seeds_from_refresh() -> list[str]:
+    debug = _latest_discovery_debug()
+    if not debug:
         return []
 
     seeds = debug.get("token_seeds_considered")
