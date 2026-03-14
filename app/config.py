@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     smart_wallets_data_file: str = "data/smart_wallets.json"
     discovery_max_wallets: int = 100
 
+    # Auto discovery scheduler
+    smart_wallet_auto_refresh_enabled: bool = True
+    smart_wallet_refresh_interval_seconds: int = 3600
+    smart_wallet_refresh_on_startup: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -6,7 +6,6 @@ from typing import Any
 import httpx
 
 from app.config import settings
-from app.smart_wallets import DEFAULT_SMART_WALLETS_DATA
 
 BASE58_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 
@@ -128,7 +127,14 @@ class SmartWalletDiscovery:
             rows = self._build_candidate_rows(stats)
 
             if not rows:
-                rows = DEFAULT_SMART_WALLETS_DATA["wallets"]
+                return {
+                    "ok": False,
+                    "error": "No candidate wallets discovered from upstream payloads",
+                    "source": "birdeye",
+                    "discovered_wallets": len(wallets),
+                    "candidate_rows": 0,
+                    "persisted": False,
+                }
 
             payload = {"wallets": rows}
             if persist:

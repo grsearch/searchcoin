@@ -1,9 +1,12 @@
+import asyncio
+import time
 from html import escape
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.dashboard import dashboard_json_payload, load_dashboard, token_gmgn_url, wallet_gmgn_url
 from app.models import AggregatedTokenResponse
 from app.services import (
@@ -31,10 +34,38 @@ class WalletEventIn(BaseModel):
 class EvaluateRequest(BaseModel):
     token_mint: str
 
-app = FastAPI(title="SearchCoin Aggregator", version="0.6.0")
+app = FastAPI(title="SearchCoin Aggregator", version="0.7.0")
 clients = ServiceClients()
 engine = SignalEngine(clients)
 discovery = SmartWalletDiscovery()
+
+refresh_state: dict[str, object] = {
+    "last_run_ts": None,
+    "last_result": None,
+    "runs": 0,
+}
+
+
+async def _refresh_smart_wallet_candidates(persist: bool = True) -> dict:
+    result = await discovery.refresh_candidates(persist=persist)
+    refresh_state["last_run_ts"] = time.time()
+    refresh_state["last_result"] = result
+    refresh_state["runs"] = int(refresh_state.get("runs", 0)) + 1
+    return result
+
+
+async def _discovery_scheduler() -> None:
+    while True:
+        await _refresh_smart_wallet_candidates(persist=True)
+        await asyncio.sleep(max(60, settings.smart_wallet_refresh_interval_seconds))
+
+
+@app.on_event("startup")
+async def _startup_discovery() -> None:
+    if settings.smart_wallet_refresh_on_startup:
+        await _refresh_smart_wallet_candidates(persist=True)
+    if settings.smart_wallet_auto_refresh_enabled:
+        asyncio.create_task(_discovery_scheduler())
 
 
 @app.get("/health")
@@ -174,10 +205,16 @@ async def api_smart_wallets() -> dict:
 
 @app.post("/api/smart-wallets/refresh")
 async def api_refresh_smart_wallets(persist: bool = True) -> dict:
-    result = await discovery.refresh_candidates(persist=persist)
+    result = await _refresh_smart_wallet_candidates(persist=persist)
     if result.get("ok"):
         result["report"] = smart_wallet_report()
+    result["refresh_state"] = refresh_state
     return result
+
+@app.get("/api/smart-wallets/refresh-state")
+async def api_smart_wallets_refresh_state() -> dict:
+    return refresh_state
+
 
 @app.get("/api/engine/state")
 async def engine_state() -> dict:
@@ -186,7 +223,6 @@ async def engine_state() -> dict:
 
 @app.post("/api/engine/event")
 async def engine_ingest_event(payload: WalletEventIn) -> dict:
-    import time
 
     event = WalletTradeEvent(
         wallet=payload.wallet,
