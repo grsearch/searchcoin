@@ -21,7 +21,7 @@
 - `GET /dashboard`：可视化看板（HTML）
 - `GET /api/dashboard`：看板数据（JSON，含 smart wallet report）
 - `GET /api/smart-wallets`：Smart Wallet 打分结果（JSON）
-- `POST /api/smart-wallets/refresh`：自动发现候选钱包并刷新 smart_wallets 数据（可落盘，返回 result + refresh_state）
+- `POST /api/smart-wallets/refresh`：自动发现候选钱包并刷新 smart_wallets 数据（可落盘，返回 result + refresh_state；包含 real_stats_rows/proxy_stats_rows）
 - `GET /api/smart-wallets/refresh-state`：查看自动刷新任务最近状态（成功/失败/时间）
 - `GET /discovery/candidates`：预览自动发现到的钱包候选
 - `POST /engine/evaluate`：交易信号评估（兼容无 `/api` 前缀调用）
@@ -196,3 +196,14 @@ score =
 6. **信号规则可追溯**：每个持仓都标记 `signal_rule`，便于复盘策略表现。
 7. **Smart Wallet 可程序化**：评分、权重、白名单和黑名单可每日批处理更新。
 8. **可用性改进**：即使没配置 API key，也能先启动并查看 dashboard。
+
+
+### Discovery 端点变更兼容说明
+
+当 Birdeye 的 `wallet/v2/pnl/multiple` 返回 404 时，系统会自动切换到回退模式：
+
+1. 尝试 `wallet/v2/pnl`（按钱包查询）
+2. 尝试 `wallet/v2/balance-change` 提取活跃度
+3. 若仍缺失统计，则自动填充 proxy 统计（可评分），并在刷新结果中标记 `proxy_stats_rows`
+
+这样可以保证“发现 -> 排名 -> 白名单”流程不中断。
