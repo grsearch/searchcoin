@@ -74,6 +74,10 @@ role = normalize_server_role(settings.server_role)
 start_time = int(time.time())
 
 
+def _role_error(target: str) -> dict:
+    return {"ok": False, "error": f"role={role} does not run {target}"}
+
+
 async def _relay_json(url: str, payload: dict) -> dict:
     if not url:
         return {"ok": False, "error": "target url not configured"}
@@ -344,6 +348,8 @@ async def scanner_run_once() -> dict:
 
 @app.post("/api/strategy/smart-wallets/ingest")
 async def strategy_ingest_smart_wallets(payload: SmartWalletBatchIn, x_inter_server_token: str | None = Header(default=None)) -> dict:
+    if not role_enabled(role, "strategy"):
+        return _role_error("strategy")
     if not auth_ok(x_inter_server_token):
         raise HTTPException(status_code=401, detail="invalid inter-server token")
     save_strategy_wallets(payload.wallets, source=payload.source)
@@ -352,6 +358,8 @@ async def strategy_ingest_smart_wallets(payload: SmartWalletBatchIn, x_inter_ser
 
 @app.get("/api/strategy/smart-wallets")
 async def strategy_get_smart_wallets() -> dict:
+    if not role_enabled(role, "strategy"):
+        return _role_error("strategy")
     wallets = load_strategy_wallets()
     return {"ok": True, "count": len(wallets), "wallets": wallets}
 
@@ -359,7 +367,7 @@ async def strategy_get_smart_wallets() -> dict:
 @app.post("/api/strategy/evaluate-and-forward")
 async def strategy_evaluate_and_forward(payload: EvaluateRequest) -> dict:
     if not role_enabled(role, "strategy"):
-        return {"ok": False, "error": f"role={role} does not run strategy"}
+        return _role_error("strategy")
 
     decision = await engine.evaluate_token(payload.token_mint)
     relay = None
@@ -380,6 +388,8 @@ async def strategy_evaluate_and_forward(payload: EvaluateRequest) -> dict:
 
 @app.post("/api/trader/signal")
 async def trader_signal(payload: TraderSignalIn, x_inter_server_token: str | None = Header(default=None)) -> dict:
+    if not role_enabled(role, "trader"):
+        return _role_error("trader")
     if not auth_ok(x_inter_server_token):
         raise HTTPException(status_code=401, detail="invalid inter-server token")
     signal = payload.model_dump()
@@ -390,6 +400,8 @@ async def trader_signal(payload: TraderSignalIn, x_inter_server_token: str | Non
 
 @app.get("/api/trader/signals")
 async def trader_signals() -> dict:
+    if not role_enabled(role, "trader"):
+        return _role_error("trader")
     signals = load_trader_signals()
     return {"ok": True, "count": len(signals), "signals": signals[-100:]}
 

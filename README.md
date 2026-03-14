@@ -144,10 +144,41 @@ curl -X POST "http://localhost:8000/engine/evaluate" -H "Content-Type: applicati
    - 接收策略信号：`POST /api/trader/signal`
    - 查询最近信号：`GET /api/trader/signals`
 
+> 现在代码已经按角色做了运行时隔离：
+> - scanner 只负责发现流程；
+> - strategy 只负责接收钱包与策略评估；
+> - trader 只负责接收/记录交易信号。
+>   若调用了不属于当前角色的端点，会返回 `{"ok": false, "error": "role=... does not run ..."}`。
+
 跨服务器认证：
 
 - 在三台服务器统一设置 `INTER_SERVER_SHARED_TOKEN`
 - 转发时自动带 `x-inter-server-token` 请求头
+
+### 给 3 个 OpenClaw 的最简安装方式
+
+仓库里已提供三套模板和启动脚本：
+
+- `deploy/.env.scanner.example` + `./run_scanner.sh`
+- `deploy/.env.strategy.example` + `./run_strategy.sh`
+- `deploy/.env.trader.example` + `./run_trader.sh`
+
+你可以在三台机器各自执行：
+
+```bash
+cp deploy/.env.scanner.example deploy/.env.scanner
+./run_scanner.sh
+```
+
+```bash
+cp deploy/.env.strategy.example deploy/.env.strategy
+./run_strategy.sh
+```
+
+```bash
+cp deploy/.env.trader.example deploy/.env.trader
+./run_trader.sh
+```
 
 ## 自动扫链/监控/信号/自动交易（MVP 流程）
 
