@@ -21,6 +21,7 @@
 - `GET /dashboard`：可视化看板（HTML）
 - `GET /api/dashboard`：看板数据（JSON，含 smart wallet report）
 - `GET /api/smart-wallets`：Smart Wallet 打分结果（JSON）
+- `POST /api/smart-wallets/refresh`：自动发现候选钱包并刷新 smart_wallets 数据（可落盘）
 - `GET /api/engine/state`：信号引擎运行状态
 - `POST /api/engine/event`：注入监听到的钱包交易事件（buy/sell）
 - `POST /api/engine/evaluate`：评估单个 token 是否触发买卖信号
@@ -57,6 +58,8 @@ cp .env.example .env
 - `REQUEST_TIMEOUT_SECONDS`（默认 `10`）
 - `DASHBOARD_DATA_FILE`（默认 `data/dashboard.json`）
 - `SMART_WALLETS_DATA_FILE`（默认 `data/smart_wallets.json`）
+- `BIRDEYE_BASE_URL`（默认 `https://public-api.birdeye.so`）
+- `DISCOVERY_MAX_WALLETS`（默认 `100`）
 - `JUPITER_BASE_URL`（默认 `https://api.jup.ag`）
 
 ### 3) 维护 Dashboard 数据
@@ -140,6 +143,7 @@ curl "http://localhost:8000/api/smart-wallets"
    - 卖出：10 秒内 2 个白名单钱包卖同币；
    - 并结合 Birdeye 活跃度确认（MVP 用 `priceChange24h` 代理）与 holder 集中度阈值。
 4. **自动交易执行**：当 `auto_trade_enabled=true` 时，调用 Jupiter quote 生成买/卖执行动作（默认 dry-run）。
+5. **候选钱包自动刷新**：调用 `POST /api/smart-wallets/refresh?persist=true`，服务会从 Birdeye Smart Money/Wallet 数据自动发现候选钱包并更新本地候选池。
 
 > 说明：MVP 当前已完成“信号->动作”自动化闭环；生产环境可在此基础上补全签名、`/swap/v1/swap`、发送交易与仓位管理。
 

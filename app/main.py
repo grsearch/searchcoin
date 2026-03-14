@@ -16,6 +16,7 @@ from app.services import (
 )
 from app.smart_wallets import smart_wallet_report
 from app.engine import SignalEngine, WalletTradeEvent
+from app.discovery import SmartWalletDiscovery
 
 
 class WalletEventIn(BaseModel):
@@ -30,9 +31,10 @@ class WalletEventIn(BaseModel):
 class EvaluateRequest(BaseModel):
     token_mint: str
 
-app = FastAPI(title="SearchCoin Aggregator", version="0.5.0")
+app = FastAPI(title="SearchCoin Aggregator", version="0.6.0")
 clients = ServiceClients()
 engine = SignalEngine(clients)
+discovery = SmartWalletDiscovery()
 
 
 @app.get("/health")
@@ -167,6 +169,15 @@ async def dashboard_data() -> dict:
 async def api_smart_wallets() -> dict:
     return smart_wallet_report()
 
+
+
+
+@app.post("/api/smart-wallets/refresh")
+async def api_refresh_smart_wallets(persist: bool = True) -> dict:
+    result = await discovery.refresh_candidates(persist=persist)
+    if result.get("ok"):
+        result["report"] = smart_wallet_report()
+    return result
 
 @app.get("/api/engine/state")
 async def engine_state() -> dict:

@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     birdeye_api_key: str = ""
     jupiter_api_key: str = ""
     jupiter_base_url: str = "https://api.jup.ag"
+    birdeye_base_url: str = "https://public-api.birdeye.so"
 
     host: str = "0.0.0.0"
     port: int = 8000
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 10.0
     dashboard_data_file: str = "data/dashboard.json"
     smart_wallets_data_file: str = "data/smart_wallets.json"
+    discovery_max_wallets: int = 100
 
     model_config = SettingsConfigDict(
         env_file=".env",
