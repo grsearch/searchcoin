@@ -36,3 +36,6 @@ def test_report_shape():
         first = report["scored_wallets"][0]
         assert "score" in first
         assert "wallet_weight" in first
+        assert "stats_source" in first
+        assert "selected_by_min_count" in first
+    assert "scoring" in report

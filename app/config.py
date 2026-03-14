@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     dashboard_data_file: str = "data/dashboard.json"
     smart_wallets_data_file: str = "data/smart_wallets.json"
     discovery_max_wallets: int = 100
+    smart_wallet_whitelist_score: float = 80.0
+    smart_wallet_min_whitelist_count: int = 0
+    smart_wallet_min_proxy_score: float = 65.0
 
     # Auto discovery scheduler
     smart_wallet_auto_refresh_enabled: bool = True

@@ -63,6 +63,9 @@ cp .env.example .env
 - `SMART_WALLETS_DATA_FILE`（默认 `data/smart_wallets.json`）
 - `BIRDEYE_BASE_URL`（默认 `https://public-api.birdeye.so`）
 - `DISCOVERY_MAX_WALLETS`（默认 `100`）
+- `SMART_WALLET_WHITELIST_SCORE`（默认 `80`，白名单阈值）
+- `SMART_WALLET_MIN_WHITELIST_COUNT`（默认 `0`，当真实评分过严时可用兜底保底数量）
+- `SMART_WALLET_MIN_PROXY_SCORE`（默认 `65`，仅对兜底补位生效）
 - `SMART_WALLET_AUTO_REFRESH_ENABLED`（默认 `true`）
 - `SMART_WALLET_REFRESH_INTERVAL_SECONDS`（默认 `3600`）
 - `SMART_WALLET_REFRESH_ON_STARTUP`（默认 `true`）
@@ -149,6 +152,13 @@ curl -X POST "http://localhost:8000/engine/evaluate" -H "Content-Type: applicati
 > - strategy 只负责接收钱包与策略评估；
 > - trader 只负责接收/记录交易信号。
 >   若调用了不属于当前角色的端点，会返回 `{"ok": false, "error": "role=... does not run ..."}`。
+
+> 如果扫描服出现“全是 proxy_stats 且白名单为空”，可先在 scanner 机器调整：
+> - `SMART_WALLET_WHITELIST_SCORE=75`
+> - `SMART_WALLET_MIN_WHITELIST_COUNT=10`
+> - `SMART_WALLET_MIN_PROXY_SCORE=65`
+>
+> 这样即使 Birdeye 真实 PnL 端点临时不可用，也能先产出可监控的候选白名单。
 
 跨服务器认证：
 

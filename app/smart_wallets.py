@@ -19,6 +19,7 @@ class SmartWalletCandidate:
     net_worth_usd: float
     avg_return_after_5m: float
     recent_10_loss_ratio: float = 0.0
+    stats_source: str = "unknown"
 
 
 @dataclass
@@ -33,6 +34,8 @@ class SmartWalletScore:
     wallet_weight: int
     is_blacklisted: bool
     is_whitelisted: bool
+    selected_by_min_count: bool
+    stats_source: str
     gmgn_url: str
 
 
@@ -147,6 +150,7 @@ def load_smart_wallet_candidates() -> list[SmartWalletCandidate]:
                 net_worth_usd=float(item.get("net_worth_usd", 0.0)),
                 avg_return_after_5m=float(item.get("avg_return_after_5m", 0.0)),
                 recent_10_loss_ratio=float(item.get("recent_10_loss_ratio", 0.0)),
+                stats_source=str(item.get("stats_source", "unknown")),
             )
         )
     return wallets
@@ -172,7 +176,8 @@ def score_wallet(candidate: SmartWalletCandidate) -> SmartWalletScore:
     )
 
     blacklisted = should_blacklist(candidate.recent_10_loss_ratio)
-    whitelisted = final_score >= 80 and not blacklisted
+    threshold = settings.smart_wallet_whitelist_score
+    whitelisted = final_score >= threshold and not blacklisted
 
     return SmartWalletScore(
         address=candidate.address,
@@ -185,6 +190,8 @@ def score_wallet(candidate: SmartWalletCandidate) -> SmartWalletScore:
         wallet_weight=score_to_weight(final_score) if whitelisted else 0,
         is_blacklisted=blacklisted,
         is_whitelisted=whitelisted,
+        selected_by_min_count=False,
+        stats_source=candidate.stats_source,
         gmgn_url=wallet_gmgn_url(candidate.address),
     )
 
@@ -194,7 +201,24 @@ def smart_wallet_report() -> dict[str, Any]:
     scored.sort(key=lambda x: x.score, reverse=True)
 
     whitelist = [w for w in scored if w.is_whitelisted]
+    min_count = max(0, settings.smart_wallet_min_whitelist_count)
+    min_proxy_score = settings.smart_wallet_min_proxy_score
+
+    if len(whitelist) < min_count:
+        for wallet in scored:
+            if wallet.is_blacklisted or wallet.is_whitelisted:
+                continue
+            if wallet.score < min_proxy_score:
+                continue
+            wallet.is_whitelisted = True
+            wallet.selected_by_min_count = True
+            wallet.wallet_weight = max(1, score_to_weight(wallet.score))
+            whitelist.append(wallet)
+            if len(whitelist) >= min_count:
+                break
+
     blacklist = [w for w in scored if w.is_blacklisted]
+    fallback_selected = sum(1 for w in whitelist if w.selected_by_min_count)
 
     return {
         "scored_wallets": [w.__dict__ for w in scored],
@@ -203,4 +227,10 @@ def smart_wallet_report() -> dict[str, Any]:
         "count_scored": len(scored),
         "count_whitelisted": len(whitelist),
         "count_blacklisted": len(blacklist),
+        "scoring": {
+            "whitelist_score_threshold": settings.smart_wallet_whitelist_score,
+            "min_whitelist_count": settings.smart_wallet_min_whitelist_count,
+            "min_proxy_score": settings.smart_wallet_min_proxy_score,
+            "fallback_selected": fallback_selected,
+        },
     }
