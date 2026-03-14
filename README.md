@@ -280,9 +280,10 @@ score =
 - 对 `address` 字段采用上下文判断：若同一对象包含交易/收益指标（如 pnl/tradeCount/volume），会识别为钱包；若是 token 元数据（如 symbol/mint）则忽略。
 - 若直连 smart-wallet 接口无钱包数据，系统会自动走“token list -> top traders”二级回退来提取钱包候选。
 - token seed 提取支持 `data[].token`（如 `smart-money/v1/token/list` 返回结构）以及 `mint/token_address/address` 变体。
-- top traders 查询默认使用文档主参数 `address`（并带 `limit`），避免错误参数造成 400。
+- top traders 查询默认使用文档主参数 `address`，并固定带 `time_frame=24h` 与 `limit`，避免参数缺失导致 400。
 - `GET /discovery/candidates` 与 `POST /api/smart-wallets/refresh` 会返回 `discovery_debug`，可直接看到每个上游端点状态码与每一步提取数量，便于定位“权限问题 / 空数据窗口 / 字段变更”。
 - `discovery_debug` 里还会包含 `raw_data_type/raw_data_len/sample_keys/sample_token` 以及 `rows_seen/tokens_extracted/accepted_mints/rejected_non_base58`，用于判断“提取失败”还是“被校验过滤”。
+- 对 `top_traders` 失败请求会额外返回 `response_text_head`，用于快速定位参数错误原因。
 - `token_seed_endpoint` 还会输出 `sample_row_keys/sample_row_token/sample_row_mint/sample_candidate`，可直接验证候选字段是否被正确读取。
 - scanner 角色每次刷新也会把 `discovery_debug` 关键字段打到日志，便于用 `journalctl -u searchcoin-scanner -f` 实时排障。
 

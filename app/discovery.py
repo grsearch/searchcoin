@@ -366,7 +366,7 @@ class SmartWalletDiscovery:
                 top_traders_url = f"{base}/defi/v2/tokens/top_traders"
                 for mint in list(token_mints)[: safe_limit]:
                     param_candidates = [
-                        {"address": mint, "limit": safe_limit},
+                        {"address": mint, "time_frame": "24h", "limit": safe_limit},
                     ]
                     for query in param_candidates:
                         try:
@@ -382,6 +382,9 @@ class SmartWalletDiscovery:
                                 "query": query,
                                 "status_code": resp.status_code,
                             }
+                            response_text_head = (resp.text or "")[:300]
+                            if response_text_head:
+                                step["response_text_head"] = response_text_head
                             if resp.status_code >= 400:
                                 debug_steps.append(step)
                                 continue
