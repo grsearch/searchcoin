@@ -280,6 +280,8 @@ score =
 - 对 `address` 字段采用上下文判断：若同一对象包含交易/收益指标（如 pnl/tradeCount/volume），会识别为钱包；若是 token 元数据（如 symbol/mint）则忽略。
 - 若直连 smart-wallet 接口无钱包数据，系统会自动走“token list -> top traders”二级回退来提取钱包候选。
 - discovery 采用双通道：优先尝试钱包维度入口（wallet seed endpoints），若为空再走 token 维度入口（token seed -> top traders）。
+- 钱包 seed 入口会跳过 `wallet/v2/pnl`（该接口需要 wallet 参数，不适合作为批量 seed），减少固定 400 噪音。
+- token 回退到 top traders 前会优先尝试非 `...pump` mint，再尝试 `...pump` mint，提高命中非空结果的概率。
 - token seed 提取支持 `data[].token`（如 `smart-money/v1/token/list` 返回结构）以及 `mint/token_address/address` 变体。
 - top traders 查询默认使用文档主参数 `address`，并固定带 `time_frame=24h` 与 `limit`，避免参数缺失导致 400。
 - top traders 的 `limit` 会自动限制在 `1-10`（Birdeye 约束），避免 `"limit should be integer, range 1-10"`。

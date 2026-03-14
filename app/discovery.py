@@ -117,6 +117,10 @@ def _add_wallet_candidate(value: str, out: set[str]) -> None:
     out.add(candidate)
 
 
+def _is_probably_pump_mint(mint: str) -> bool:
+    return mint.strip().lower().endswith("pump")
+
+
 def _extract_token_mints(
     payload: Any,
     out: set[str],
@@ -268,7 +272,6 @@ class SmartWalletDiscovery:
             f"{base}/smart-money/v1/wallet/list",
             f"{base}/smart-money/v1/wallets/list",
             f"{base}/wallet/v2/pnl/leaderboard",
-            f"{base}/wallet/v2/pnl",
         ]
         direct_wallet_endpoints = [
             f"{base}/smart-money/v1/token/list",
@@ -408,7 +411,11 @@ class SmartWalletDiscovery:
                         continue
 
                 top_traders_url = f"{base}/defi/v2/tokens/top_traders"
-                for mint in list(token_mints)[: safe_limit]:
+                ordered_mints = sorted(
+                    token_mints,
+                    key=lambda m: (1 if _is_probably_pump_mint(m) else 0, m),
+                )
+                for mint in ordered_mints[: safe_limit]:
                     param_candidates = [
                         {"address": mint, "time_frame": "24h", "limit": safe_top_traders_limit},
                     ]

@@ -6,6 +6,7 @@ from app.discovery import (
     _extract_base58_wallets,
     _extract_token_mints_from_token_rows,
     _extract_token_mints,
+    _is_probably_pump_mint,
 )
 
 
@@ -159,6 +160,24 @@ def test_extract_token_mints_from_tokenish_address_rows():
 def test_token_entity_heuristics():
     assert _dict_looks_like_token_entity({"address": "abc", "symbol": "X", "price": 1.2})
     assert not _dict_looks_like_token_entity({"address": "abc", "pnl_30d": 100, "tradeCount": 3})
+
+
+
+def test_is_probably_pump_mint():
+    assert _is_probably_pump_mint("63nb8TihiGToYCMxdKrbMyJ8qshZtxx2Q1pgaqM9pump")
+    assert _is_probably_pump_mint(" 63nb8TihiGToYCMxdKrbMyJ8qshZtxx2Q1pgaqM9pump ")
+    assert not _is_probably_pump_mint("So11111111111111111111111111111111111111112")
+
+
+def test_non_pump_mints_are_prioritized_for_top_traders():
+    mints = {
+        "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzpump",
+        "So11111111111111111111111111111111111111112",
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    }
+    ordered = sorted(mints, key=lambda m: (1 if _is_probably_pump_mint(m) else 0, m))
+    assert ordered[-1].endswith("pump")
+    assert not ordered[0].endswith("pump")
 
 
 def test_build_candidate_rows_sorted_and_limited():
