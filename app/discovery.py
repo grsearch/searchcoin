@@ -86,7 +86,8 @@ def _dict_looks_like_wallet_entity(payload: dict[str, Any]) -> bool:
 
 def _dict_looks_like_token_entity(payload: dict[str, Any]) -> bool:
     keys = {_normalize_key(str(k)) for k in payload.keys()}
-    if "address" not in keys:
+    has_token_identifier = "address" in keys or "token" in keys
+    if not has_token_identifier:
         return False
 
     token_hints = {
@@ -126,6 +127,10 @@ def _extract_token_mints(payload: Any, out: set[str], parent_key: str = "") -> N
                 if BASE58_RE.match(candidate):
                     out.add(candidate)
             elif isinstance(value, str) and key_norm == "address" and tokenish:
+                candidate = value.strip()
+                if BASE58_RE.match(candidate):
+                    out.add(candidate)
+            elif isinstance(value, str) and key_norm == "token" and tokenish:
                 candidate = value.strip()
                 if BASE58_RE.match(candidate):
                     out.add(candidate)

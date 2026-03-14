@@ -72,6 +72,22 @@ def test_extract_token_mints_from_nested_payload():
     assert "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2" not in out
 
 
+def test_extract_token_mints_from_smart_money_token_key_payload():
+    out = set()
+    payload = {
+        "data": [
+            {
+                "token": "63nb8TihiGToYCMxdKrbMyJ8qshZtxx2Q1pgaqM9pump",
+                "symbol": "Solmoji",
+                "price": 0.0000025,
+                "volume_usd": 2326465,
+            }
+        ]
+    }
+    _extract_token_mints(payload, out)
+    assert "63nb8TihiGToYCMxdKrbMyJ8qshZtxx2Q1pgaqM9pump" in out
+
+
 def test_extract_token_mints_from_tokenish_address_rows():
     out = set()
     payload = {
