@@ -21,6 +21,10 @@
 - `GET /dashboard`：可视化看板（HTML）
 - `GET /api/dashboard`：看板数据（JSON，含 smart wallet report）
 - `GET /api/smart-wallets`：Smart Wallet 打分结果（JSON）
+- `GET /api/engine/state`：信号引擎运行状态
+- `POST /api/engine/event`：注入监听到的钱包交易事件（buy/sell）
+- `POST /api/engine/evaluate`：评估单个 token 是否触发买卖信号
+- `POST /api/engine/run-once`：对当前窗口内 token 批量评估并返回决策
 
 ## 快速开始
 
@@ -123,6 +127,21 @@ curl "http://localhost:8000/api/smart-wallets"
 
 - `http://localhost:8000/dashboard`
 
+
+
+## 自动扫链/监控/信号/自动交易（MVP 流程）
+
+当前实现的最小闭环：
+
+1. **Smart Wallet 扫描**：通过 `smart_wallet_report()` 生成白名单与权重（可由 Birdeye 钱包数据每日更新）。
+2. **实时监控输入**：上游监听器（建议 Helius WebSocket）把钱包买卖事件写入 `POST /api/engine/event`。
+3. **信号引擎判定**：
+   - 买入：10 秒内 2 个白名单钱包买同币，或 1 个高权重钱包大额买入；
+   - 卖出：10 秒内 2 个白名单钱包卖同币；
+   - 并结合 Birdeye 活跃度确认（MVP 用 `priceChange24h` 代理）与 holder 集中度阈值。
+4. **自动交易执行**：当 `auto_trade_enabled=true` 时，调用 Jupiter quote 生成买/卖执行动作（默认 dry-run）。
+
+> 说明：MVP 当前已完成“信号->动作”自动化闭环；生产环境可在此基础上补全签名、`/swap/v1/swap`、发送交易与仓位管理。
 
 ## Jupiter Pro I 关键配置
 

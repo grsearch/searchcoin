@@ -2,6 +2,7 @@ from html import escape
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 
 from app.dashboard import dashboard_json_payload, load_dashboard, token_gmgn_url, wallet_gmgn_url
 from app.models import AggregatedTokenResponse
@@ -14,9 +15,24 @@ from app.services import (
     validate_mint,
 )
 from app.smart_wallets import smart_wallet_report
+from app.engine import SignalEngine, WalletTradeEvent
 
-app = FastAPI(title="SearchCoin Aggregator", version="0.4.0")
+
+class WalletEventIn(BaseModel):
+    wallet: str
+    token_mint: str
+    side: str = Field(pattern="^(buy|sell)$")
+    amount_token: float
+    amount_usd: float
+    ts: float | None = None
+
+
+class EvaluateRequest(BaseModel):
+    token_mint: str
+
+app = FastAPI(title="SearchCoin Aggregator", version="0.5.0")
 clients = ServiceClients()
+engine = SignalEngine(clients)
 
 
 @app.get("/health")
@@ -151,6 +167,43 @@ async def dashboard_data() -> dict:
 async def api_smart_wallets() -> dict:
     return smart_wallet_report()
 
+
+@app.get("/api/engine/state")
+async def engine_state() -> dict:
+    return engine.snapshot()
+
+
+@app.post("/api/engine/event")
+async def engine_ingest_event(payload: WalletEventIn) -> dict:
+    import time
+
+    event = WalletTradeEvent(
+        wallet=payload.wallet,
+        token_mint=payload.token_mint,
+        side=payload.side,
+        amount_token=payload.amount_token,
+        amount_usd=payload.amount_usd,
+        ts=payload.ts or time.time(),
+    )
+    engine.ingest_event(event)
+    return {"ok": True, "event": event.__dict__}
+
+
+@app.post("/api/engine/evaluate")
+async def engine_evaluate(payload: EvaluateRequest) -> dict:
+    decision = await engine.evaluate_token(payload.token_mint)
+    return decision.__dict__
+
+
+
+
+@app.post("/api/engine/run-once")
+async def engine_run_once() -> dict:
+    decisions = await engine.evaluate_all_active_tokens()
+    return {
+        "smart_wallets": smart_wallet_report()["smart_wallets"],
+        "decisions": decisions,
+    }
 
 @app.get("/token/{mint}", response_model=AggregatedTokenResponse)
 async def token_summary(mint: str) -> AggregatedTokenResponse:
