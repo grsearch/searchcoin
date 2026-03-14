@@ -166,6 +166,59 @@ def _extract_token_mints(
             _record_candidate(payload.strip())
 
 
+def _extract_token_mints_from_token_rows(payload: Any, out: set[str]) -> tuple[dict[str, Any], dict[str, int]]:
+    """Direct extraction for token-seed endpoints, bypassing token-entity heuristics."""
+    stats = {
+        "rows_seen": 0,
+        "tokens_extracted": 0,
+        "accepted_mints": 0,
+        "rejected_non_base58": 0,
+    }
+    debug: dict[str, Any] = {
+        "sample_row_keys": [],
+        "sample_row_token": None,
+        "sample_row_mint": None,
+        "sample_candidate": None,
+        "sample_token_address": None,
+        "sample_address": None,
+    }
+
+    rows = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return debug, stats
+
+    for idx, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        stats["rows_seen"] += 1
+        candidate = (
+            row.get("token")
+            or row.get("mint")
+            or row.get("token_address")
+            or row.get("address")
+        )
+
+        if idx == 0:
+            debug["sample_row_keys"] = list(row.keys())[:20]
+            debug["sample_row_token"] = row.get("token")
+            debug["sample_row_mint"] = row.get("mint")
+            debug["sample_token_address"] = row.get("token_address")
+            debug["sample_address"] = row.get("address")
+            debug["sample_candidate"] = candidate
+
+        if not isinstance(candidate, str) or not candidate.strip():
+            continue
+        candidate_s = candidate.strip()
+        stats["tokens_extracted"] += 1
+        if BASE58_RE.match(candidate_s):
+            out.add(candidate_s)
+            stats["accepted_mints"] += 1
+        else:
+            stats["rejected_non_base58"] += 1
+
+    return debug, stats
+
+
 def _extract_base58_wallets(payload: Any, out: set[str], parent_key: str = "") -> None:
     if isinstance(payload, dict):
         treat_address_as_wallet = _dict_looks_like_wallet_entity(payload)
@@ -291,13 +344,10 @@ class SmartWalletDiscovery:
                             if data.get("message"):
                                 step["api_message"] = str(data.get("message"))
                         before_mints = len(token_mints)
-                        extract_stats = {
-                            "rows_seen": 0,
-                            "tokens_extracted": 0,
-                            "accepted_mints": 0,
-                            "rejected_non_base58": 0,
-                        }
+                        direct_debug, extract_stats = _extract_token_mints_from_token_rows(data, token_mints)
+                        # Fallback to generic extractor in case upstream shape differs from token list rows.
                         _extract_token_mints(data, token_mints, stats=extract_stats)
+                        step.update(direct_debug)
                         step.update(extract_stats)
                         step["mints_found_delta"] = len(token_mints) - before_mints
                         step["mints_found_total"] = len(token_mints)

@@ -4,6 +4,7 @@ from app.discovery import (
     SmartWalletDiscovery,
     _dict_looks_like_token_entity,
     _extract_base58_wallets,
+    _extract_token_mints_from_token_rows,
     _extract_token_mints,
 )
 
@@ -114,6 +115,24 @@ def test_extract_token_mints_with_stats_counts():
     assert stats["tokens_extracted"] >= 2
     assert stats["accepted_mints"] >= 1
     assert stats["rejected_non_base58"] >= 1
+
+
+def test_extract_token_mints_from_token_rows_includes_first_candidate_debug():
+    out = set()
+    payload = {
+        "data": [
+            {
+                "token": "63nb8TihiGToYCMxdKrbMyJ8qshZtxx2Q1pgaqM9pump",
+                "symbol": "Solmoji",
+                "price": 0.0000025,
+            }
+        ]
+    }
+    debug, stats = _extract_token_mints_from_token_rows(payload, out)
+    assert debug["sample_row_token"] == "63nb8TihiGToYCMxdKrbMyJ8qshZtxx2Q1pgaqM9pump"
+    assert debug["sample_candidate"] == "63nb8TihiGToYCMxdKrbMyJ8qshZtxx2Q1pgaqM9pump"
+    assert stats["tokens_extracted"] == 1
+    assert stats["accepted_mints"] == 1
 
 
 def test_extract_token_mints_from_tokenish_address_rows():
