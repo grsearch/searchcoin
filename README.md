@@ -1,0 +1,159 @@
+# SearchCoin API Aggregator
+
+一个可交给 OpenClaw 安装的轻量服务：输入 Solana 代币 mint 地址，聚合查询以下数据源：
+
+- **Helius**：代币基础信息（符号、名称、图片、供应量等）
+- **Birdeye**：当前 DeFi 价格与 24h 变化
+- **Jupiter**：用 1 个代币换 USDC 的路由报价（用于交叉验证）
+
+同时提供 Dashboard 页面，展示：
+
+- 正在监控的钱包地址（可点击跳转 GMGN）
+- 钱包总资产
+- 按系统信号买入后，当前持仓币种、symbol、合约地址（可点击跳转 GMGN）与盈亏情况
+- 每个持仓触发的买入信号规则（`signal_rule`）
+- Smart Wallet 白名单（含评分与权重）
+
+## 功能
+
+- `GET /health`：健康检查
+- `GET /token/{mint}`：聚合三方 API 响应，输出统一 JSON
+- `GET /dashboard`：可视化看板（HTML）
+- `GET /api/dashboard`：看板数据（JSON，含 smart wallet report）
+- `GET /api/smart-wallets`：Smart Wallet 打分结果（JSON）
+
+## 快速开始
+
+### 1) 安装依赖
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 2) 环境变量
+
+复制并编辑：
+
+```bash
+cp .env.example .env
+```
+
+说明：
+
+- `HELIUS_API_KEY`、`BIRDEYE_API_KEY` **用于 `/token/{mint}` 聚合接口**。
+- Dashboard (`/dashboard`、`/api/dashboard`) 与 smart wallet scoring 可在无 API key 下工作（用本地 JSON）。
+
+可选项：
+
+- `HOST`（默认 `0.0.0.0`）
+- `PORT`（默认 `8000`）
+- `USDC_MINT`（默认 Solana 主网 USDC）
+- `REQUEST_TIMEOUT_SECONDS`（默认 `10`）
+- `DASHBOARD_DATA_FILE`（默认 `data/dashboard.json`）
+- `SMART_WALLETS_DATA_FILE`（默认 `data/smart_wallets.json`）
+
+### 3) 维护 Dashboard 数据
+
+编辑 `data/dashboard.json`：
+
+```json
+{
+  "wallets": [
+    {
+      "address": "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2",
+      "label": "主账户",
+      "total_asset_usd": 12650.0
+    }
+  ],
+  "positions": [
+    {
+      "wallet_address": "DwBnzRQ5f7Gn2ujNpZY4bZeMc797cyHSL4ZfmtKFJmt2",
+      "symbol": "PUMP",
+      "token_mint": "DzMw8nmA5rnoRTTXGHCZaRp9EkMwG2anqY99XxiXpump",
+      "quantity": 150000.0,
+      "avg_buy_price_usd": 0.0042,
+      "current_price_usd": 0.0056,
+      "signal_rule": "breakout_v2"
+    }
+  ]
+}
+```
+
+### 4) 维护 Smart Wallet 候选数据
+
+编辑 `data/smart_wallets.json`（可来自 Birdeye wallet API 预处理）：
+
+```json
+{
+  "wallets": [
+    {
+      "address": "DwBnz...",
+      "pnl_30d": 128000,
+      "pnl_7d": 22000,
+      "profitable_trades": 78,
+      "total_trades": 110,
+      "tx_last_7d": 95,
+      "tx_last_3d": 38,
+      "net_worth_usd": 680000,
+      "avg_return_after_5m": 0.16,
+      "recent_10_loss_ratio": 0.2
+    }
+  ]
+}
+```
+
+### 5) 运行
+
+```bash
+./run.sh
+```
+
+### 6) 调用示例
+
+```bash
+curl "http://localhost:8000/token/So11111111111111111111111111111111111111112"
+curl "http://localhost:8000/api/dashboard"
+curl "http://localhost:8000/api/smart-wallets"
+```
+
+浏览器打开：
+
+- `http://localhost:8000/dashboard`
+
+## Smart Wallet 评分模型（实战版）
+
+总分：
+
+```text
+score =
+0.30 * pnl_score
++ 0.20 * winrate_score
++ 0.20 * activity_score
++ 0.15 * wallet_size_score
++ 0.15 * timing_score
+```
+
+- **PnL**：基于 `pnl_30d`
+- **Winrate**：`profitable_trades / total_trades`
+- **Activity**：基于 `tx_last_7d`
+- **Wallet Size**：基于 `net_worth_usd`
+- **Timing**：基于 `avg_return_after_5m`
+
+筛选规则：
+
+- `score >= 80` 进入白名单 smart_wallets
+- `score > 90 => weight=3`，`>85 => 2`，`>=80 => 1`
+- `recent_10_loss_ratio > 0.5` 直接进黑名单并移出白名单
+
+## 设计说明
+
+1. **失败隔离**：任一上游 API 失败不会导致整体 500，响应中会给出 `errors` 字段。
+2. **统一价格语义**：优先采用 Birdeye spot 价格，Jupiter 报价作为可执行路由参考。
+3. **基础校验**：对 mint 做长度与字符集校验，避免无效请求打爆上游。
+4. **可观测性**：每次请求包含 `sources` 结果与错误信息，便于排查。
+5. **Dashboard 可配置**：监控钱包和持仓信息来自 JSON 文件，便于后续接入数据库或信号系统。
+6. **信号规则可追溯**：每个持仓都标记 `signal_rule`，便于复盘策略表现。
+7. **Smart Wallet 可程序化**：评分、权重、白名单和黑名单可每日批处理更新。
+8. **可用性改进**：即使没配置 API key，也能先启动并查看 dashboard。
