@@ -282,3 +282,4 @@ score =
 - top traders 查询会自动尝试多种参数（`address` / `token_address` / `mint`），兼容 Birdeye 端点参数差异。
 - top traders 还会尝试附带 `time_frame`（如 `24h` / `1h`）的参数组合，兼容需要时间窗口参数的场景。
 - `GET /discovery/candidates` 与 `POST /api/smart-wallets/refresh` 会返回 `discovery_debug`，可直接看到每个上游端点状态码与每一步提取数量，便于定位“权限问题 / 空数据窗口 / 字段变更”。
+- scanner 角色每次刷新也会把 `discovery_debug` 关键字段打到日志，便于用 `journalctl -u searchcoin-scanner -f` 实时排障。

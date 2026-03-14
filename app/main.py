@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 
 import httpx
@@ -63,6 +64,8 @@ app = FastAPI(title="SearchCoin Aggregator", version="0.8.0")
 clients = ServiceClients()
 engine = SignalEngine(clients)
 discovery = SmartWalletDiscovery()
+logger = logging.getLogger("searchcoin.scanner")
+logger.setLevel(logging.INFO)
 
 refresh_state: dict[str, object] = {
     "last_run_ts": None,
@@ -113,6 +116,37 @@ async def _refresh_smart_wallet_candidates(persist: bool = True) -> dict:
     refresh_state["last_run_ts"] = time.time()
     refresh_state["last_result"] = result
     refresh_state["runs"] = int(refresh_state.get("runs", 0)) + 1
+
+    if role_enabled(role, "scanner"):
+        logger.info(
+            "scanner refresh: ok=%s discovered_wallets=%s candidate_rows=%s real_stats=%s proxy_stats=%s",
+            result.get("ok"),
+            result.get("discovered_wallets"),
+            result.get("candidate_rows"),
+            result.get("real_stats_rows"),
+            result.get("proxy_stats_rows"),
+        )
+
+        debug = result.get("discovery_debug") if isinstance(result, dict) else None
+        if isinstance(debug, dict):
+            steps = debug.get("steps") if isinstance(debug.get("steps"), list) else []
+            for idx, step in enumerate(steps[-20:], start=max(0, len(steps) - 20)):
+                if not isinstance(step, dict):
+                    continue
+                logger.info(
+                    "scanner discovery step[%s]: stage=%s status=%s api_success=%s msg=%s url=%s query=%s mint=%s wallets_delta=%s mints_delta=%s",
+                    idx,
+                    step.get("stage"),
+                    step.get("status_code"),
+                    step.get("api_success"),
+                    step.get("api_message"),
+                    step.get("url"),
+                    step.get("query"),
+                    step.get("mint"),
+                    step.get("wallets_found_delta"),
+                    step.get("mints_found_delta"),
+                )
+
     return result
 
 
