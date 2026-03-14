@@ -279,7 +279,8 @@ score =
 - 自动过滤典型 Pump.fun mint（`...pump`）以降低误识别。
 - 对 `address` 字段采用上下文判断：若同一对象包含交易/收益指标（如 pnl/tradeCount/volume），会识别为钱包；若是 token 元数据（如 symbol/mint）则忽略。
 - 若直连 smart-wallet 接口无钱包数据，系统会自动走“token list -> top traders”二级回退来提取钱包候选。
-- top traders 查询会自动尝试多种参数（`address` / `token_address` / `mint`），兼容 Birdeye 端点参数差异。
-- top traders 还会尝试附带 `time_frame`（如 `24h` / `1h`）的参数组合，兼容需要时间窗口参数的场景。
+- top traders 查询默认使用文档主参数 `address`（并带 `limit`），避免错误参数造成 400。
 - `GET /discovery/candidates` 与 `POST /api/smart-wallets/refresh` 会返回 `discovery_debug`，可直接看到每个上游端点状态码与每一步提取数量，便于定位“权限问题 / 空数据窗口 / 字段变更”。
 - scanner 角色每次刷新也会把 `discovery_debug` 关键字段打到日志，便于用 `journalctl -u searchcoin-scanner -f` 实时排障。
+
+此外，`/token/{mint}` 的 Birdeye 价格请求现在严格使用 `BIRDEYE_BASE_URL`（默认 `https://public-api.birdeye.so`）拼接 `/defi/price`，避免环境里误用旧域名。

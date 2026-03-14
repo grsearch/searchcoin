@@ -191,7 +191,6 @@ class SmartWalletDiscovery:
         safe_limit = max(1, min(limit, 20))
         params = {"limit": safe_limit}
         direct_wallet_endpoints = [
-            f"{base}/smart-money/v1/wallet/list",
             f"{base}/smart-money/v1/token/list",
             f"{base}/defi/v3/token/list",
         ]
@@ -277,12 +276,6 @@ class SmartWalletDiscovery:
                 for mint in list(token_mints)[: safe_limit]:
                     param_candidates = [
                         {"address": mint, "limit": safe_limit},
-                        {"address": mint, "limit": safe_limit, "time_frame": "24h"},
-                        {"address": mint, "limit": safe_limit, "time_frame": "1h"},
-                        {"token_address": mint, "limit": safe_limit},
-                        {"token_address": mint, "limit": safe_limit, "time_frame": "24h"},
-                        {"mint": mint, "limit": safe_limit},
-                        {"mint": mint, "limit": safe_limit, "time_frame": "24h"},
                     ]
                     for query in param_candidates:
                         try:

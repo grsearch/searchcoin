@@ -60,8 +60,10 @@ class ServiceClients:
 
     async def birdeye_price(self, mint: str) -> dict[str, Any]:
         _require_api_key("Birdeye", settings.birdeye_api_key)
+        if not mint:
+            raise UpstreamError("Birdeye mint address is empty")
 
-        url = "https://public-api.birdeye.so/defi/price"
+        url = f"{settings.birdeye_base_url.rstrip('/')}/defi/price"
         headers = {
             "X-API-KEY": settings.birdeye_api_key,
             "x-chain": "solana",
